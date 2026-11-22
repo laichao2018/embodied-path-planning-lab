@@ -75,6 +75,14 @@ button { color: inherit; }
 .section-label span { font: 700 8px ui-monospace, monospace; letter-spacing: .14em; }
 .section-label b { color: #a8b7bd; font-size: 9px; font-weight: 500; }
 
+.grid-size-control { display: grid; grid-template-columns: 1fr 10px 1fr 46px; align-items: end; gap: 5px; margin-top: 9px; }
+.grid-size-control label { display: grid; grid-template-columns: 13px 1fr; align-items: center; gap: 4px; color: var(--muted); font-size: 8px; }
+.grid-size-control input { width: 100%; min-width: 0; height: 27px; padding: 0 5px; border: 1px solid var(--line); outline: 0; background: #081216; color: var(--ink); font: 800 10px ui-monospace, monospace; text-align: center; }
+.grid-size-control input:focus { border-color: var(--cyan); }
+.grid-size-control i { align-self: center; color: var(--muted); font: normal 10px ui-monospace, monospace; text-align: center; }
+.grid-size-control button { height: 27px; border: 1px solid rgba(0,191,255,.5); background: rgba(0,191,255,.09); color: var(--cyan); font-size: 9px; font-weight: 800; cursor: pointer; }
+.grid-size-control button:hover { background: var(--cyan); color: #041015; }
+
 .segmented { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; margin-top: 9px; }
 .segmented button { border: 1px solid var(--line); background: rgba(255,255,255,.018); color: var(--muted); padding: 8px 4px; cursor: pointer; font-size: 10px; transition: 140ms ease; }
 .segmented button.active { color: #041015; background: var(--cyan); border-color: var(--cyan); font-weight: 800; }
@@ -194,6 +202,7 @@ button { color: inherit; }
   .lab-grid { grid-template-columns: 190px minmax(0, 1fr); padding: 6px; gap: 6px; }
   .control-panel { padding: 11px; }
   .section-label { margin-top: 12px; }
+  .grid-size-control { margin-top: 6px; }
   .map-legend > span:not(.legend-note) { display: none; }
 }
 

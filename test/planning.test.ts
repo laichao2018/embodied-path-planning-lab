@@ -2,6 +2,9 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  COLS,
+  ROWS,
+  configureGrid,
   dynamicObstaclesAt,
   makeCostField,
   runPlanner,
@@ -61,4 +64,26 @@ test("RRT* rewiring improves the deterministic RRT route", () => {
   const rrtStar = runPlanner("rrtstar", start, goal, field);
 
   assert.ok(rrtStar.pathLength < rrt.pathLength);
+});
+
+test("all planners support a user-defined grid size", () => {
+  try {
+    configureGrid(48, 30);
+    assert.equal(COLS, 48);
+    assert.equal(ROWS, 30);
+
+    const field = makeCostField(dynamicObstaclesAt(1_000), 1.45);
+    assert.equal(field.costs.length, 30);
+    assert.equal(field.costs[0].length, 48);
+
+    const start = { x: 4, y: 25 };
+    const goal = { x: 44, y: 4 };
+    for (const algorithm of algorithms) {
+      const result = runPlanner(algorithm, start, goal, field);
+      assert.equal(result.found, true);
+      assertPathIsCollisionFree(result.path, field.blocked);
+    }
+  } finally {
+    configureGrid(35, 24);
+  }
 });

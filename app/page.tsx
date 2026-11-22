@@ -6,8 +6,10 @@ import {
   CANVAS_WIDTH,
   CELL,
   COLS,
+  GRID_LIMITS,
   ROWS,
   STATIC_RECTS,
+  configureGrid,
   dynamicObstaclesAt,
   makeCostField,
   pointToCanvas,
@@ -49,8 +51,17 @@ const FORMULAS: Record<PlannerKey, string> = {
   rrtstar: "Jnew = min(Jnear + c)",
 };
 
-const DEFAULT_START = { x: 3, y: 20 };
-const DEFAULT_GOAL = { x: 32, y: 3 };
+function defaultPointsForGrid(cols: number, rows: number) {
+  const horizontalInset = Math.max(3, Math.round((3 / 35) * cols));
+  const startBottomInset = Math.max(3, Math.round((4 / 24) * rows));
+  const goalTopInset = Math.max(2, Math.round((3 / 24) * rows));
+  return {
+    start: { x: horizontalInset, y: rows - startBottomInset },
+    goal: { x: cols - horizontalInset, y: goalTopInset },
+  };
+}
+
+const INITIAL_POINTS = defaultPointsForGrid(COLS, ROWS);
 
 function positionAlongPath(path: Point[], cursor: number) {
   if (!path.length) return null;
@@ -72,8 +83,11 @@ export default function Home() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [layer, setLayer] = useState<Layer>("cost");
   const [placement, setPlacement] = useState<"start" | "goal">("start");
-  const [start, setStart] = useState<Point>(DEFAULT_START);
-  const [goal, setGoal] = useState<Point>(DEFAULT_GOAL);
+  const [gridSize, setGridSize] = useState({ cols: COLS, rows: ROWS });
+  const [draftCols, setDraftCols] = useState(String(COLS));
+  const [draftRows, setDraftRows] = useState(String(ROWS));
+  const [start, setStart] = useState<Point>(INITIAL_POINTS.start);
+  const [goal, setGoal] = useState<Point>(INITIAL_POINTS.goal);
   const [inflation, setInflation] = useState(1.45);
   const [speed, setSpeed] = useState(4);
   const [enabled, setEnabled] = useState<Record<PlannerKey, boolean>>({
@@ -103,6 +117,20 @@ export default function Home() {
     setRunning(false);
     setExecuting(false);
     setExecutionCursor(0);
+  };
+
+  const applyGridSize = () => {
+    const next = configureGrid(Number(draftCols) || gridSize.cols, Number(draftRows) || gridSize.rows);
+    const points = defaultPointsForGrid(next.cols, next.rows);
+    clearRun();
+    setGridSize(next);
+    setDraftCols(String(next.cols));
+    setDraftRows(String(next.rows));
+    setStart(points.start);
+    setGoal(points.goal);
+    setPlacement("start");
+    setDraggingMarker(null);
+    setNotice(`地图已调整为 ${next.cols} × ${next.rows}，障碍物与任务点已重新布局`);
   };
 
   useEffect(() => {
@@ -345,7 +373,7 @@ export default function Home() {
     };
     frame = window.requestAnimationFrame(draw);
     return () => window.cancelAnimationFrame(frame);
-  }, [draggingMarker, executionCursor, executionResult, inflation, layer, progress, resultList, start, goal]);
+  }, [draggingMarker, executionCursor, executionResult, gridSize, inflation, layer, progress, resultList, start, goal]);
 
   const plan = () => {
     if (resultList.length && progress < maxSteps) {
@@ -443,9 +471,10 @@ export default function Home() {
   };
 
   const resetPoints = () => {
+    const points = defaultPointsForGrid(gridSize.cols, gridSize.rows);
     clearRun();
-    setStart(DEFAULT_START);
-    setGoal(DEFAULT_GOAL);
+    setStart(points.start);
+    setGoal(points.goal);
     setPlacement("start");
     setDraggingMarker(null);
     setNotice("起终点已重置，可直接拖动图标调整位置");
@@ -461,7 +490,7 @@ export default function Home() {
           <div><strong>NAV STUDIO</strong><p>ROBOT PATH PLANNING WORKSPACE</p></div>
         </div>
         <div className="workspace-stats">
-          <span>GRID <b>35 × 24</b></span>
+          <span>GRID <b>{gridSize.cols} × {gridSize.rows}</b></span>
           <span>PLANNERS <b>04</b></span>
           <span>OBSTACLES <b>LIVE</b></span>
         </div>
@@ -471,7 +500,13 @@ export default function Home() {
       <section className="lab-grid">
         <aside className="control-panel panel">
           <div className="panel-heading primary"><div><p>CONTROL DECK</p><h2>规划控制</h2></div><i className="panel-signal" /></div>
-          <div className="section-label"><span>MAP MODEL</span><b>地图模型</b></div>
+          <div className="section-label"><span>MAP SIZE</span><b>32–60 列 / 20–40 行</b></div>
+          <div className="grid-size-control">
+            <label>列<input type="number" min={GRID_LIMITS.minCols} max={GRID_LIMITS.maxCols} value={draftCols} onChange={(event) => setDraftCols(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") applyGridSize(); }} aria-label="地图列数" /></label>
+            <i>×</i>
+            <label>行<input type="number" min={GRID_LIMITS.minRows} max={GRID_LIMITS.maxRows} value={draftRows} onChange={(event) => setDraftRows(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") applyGridSize(); }} aria-label="地图行数" /></label>
+            <button type="button" onClick={applyGridSize}>应用</button>
+          </div>
           <div className="segmented">
             {(["raw", "inflation", "cost"] as Layer[]).map((item) => (
               <button key={item} type="button" aria-pressed={layer === item} className={layer === item ? "active" : ""} onClick={() => setLayer(item)}>

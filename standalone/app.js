@@ -1,13 +1,16 @@
 (function () {
   "use strict";
 
-  const COLS = 35;
-  const ROWS = 24;
   const CELL = 24;
-  const WIDTH = COLS * CELL;
-  const HEIGHT = ROWS * CELL;
+  const BASE_COLS = 35;
+  const BASE_ROWS = 24;
+  const GRID_LIMITS = { minCols: 32, maxCols: 60, minRows: 20, maxRows: 40 };
+  let COLS = BASE_COLS;
+  let ROWS = BASE_ROWS;
+  let WIDTH = COLS * CELL;
+  let HEIGHT = ROWS * CELL;
   const PLANNERS = ["astar", "dijkstra", "rrt", "rrtstar"];
-  const STATIC_RECTS = [
+  const BASE_STATIC_RECTS = [
     { x: 6, y: 3, w: 4, h: 7 },
     { x: 15, y: 0, w: 3, h: 8 },
     { x: 22, y: 10, w: 9, h: 3 },
@@ -15,6 +18,27 @@
     { x: 25, y: 17, w: 3, h: 4 },
     { x: 4, y: 14, w: 5, h: 2 },
   ];
+
+  function staticRectsForGrid(cols, rows) {
+    return BASE_STATIC_RECTS.map((rect) => {
+      const x = Math.max(1, Math.min(cols - 2, Math.round(rect.x / BASE_COLS * cols)));
+      const y = Math.max(0, Math.min(rows - 2, Math.round(rect.y / BASE_ROWS * rows)));
+      const w = Math.max(1, Math.min(cols - 1 - x, Math.round(rect.w / BASE_COLS * cols)));
+      const h = Math.max(1, Math.min(rows - 1 - y, Math.round(rect.h / BASE_ROWS * rows)));
+      return { x, y, w, h };
+    });
+  }
+
+  let STATIC_RECTS = staticRectsForGrid(COLS, ROWS);
+
+  function configureGrid(cols, rows) {
+    COLS = Math.max(GRID_LIMITS.minCols, Math.min(GRID_LIMITS.maxCols, Math.round(cols)));
+    ROWS = Math.max(GRID_LIMITS.minRows, Math.min(GRID_LIMITS.maxRows, Math.round(rows)));
+    WIDTH = COLS * CELL;
+    HEIGHT = ROWS * CELL;
+    STATIC_RECTS = staticRectsForGrid(COLS, ROWS);
+    return { cols: COLS, rows: ROWS };
+  }
   const COLORS = {
     astar: "#00bfff",
     dijkstra: "#ffd400",
@@ -22,14 +46,27 @@
     rrtstar: "#a970ff",
   };
   const NAMES = { astar: "A*", dijkstra: "DIJKSTRA", rrt: "RRT", rrtstar: "RRT*" };
-  const DEFAULT_START = { x: 3, y: 20 };
-  const DEFAULT_GOAL = { x: 32, y: 3 };
+  function defaultPointsForGrid(cols, rows) {
+    const horizontalInset = Math.max(3, Math.round(3 / BASE_COLS * cols));
+    const startBottomInset = Math.max(3, Math.round(4 / BASE_ROWS * rows));
+    const goalTopInset = Math.max(2, Math.round(3 / BASE_ROWS * rows));
+    return {
+      start: { x: horizontalInset, y: rows - startBottomInset },
+      goal: { x: cols - horizontalInset, y: goalTopInset },
+    };
+  }
+
+  const INITIAL_POINTS = defaultPointsForGrid(COLS, ROWS);
 
   const canvas = document.getElementById("map");
   const ctx = canvas.getContext("2d");
   const elements = {
     layerControls: document.getElementById("layer-controls"),
     layerName: document.getElementById("layer-name"),
+    gridCols: document.getElementById("grid-cols"),
+    gridRows: document.getElementById("grid-rows"),
+    applyGrid: document.getElementById("apply-grid"),
+    gridSizeStat: document.getElementById("grid-size-stat"),
     inflation: document.getElementById("inflation"),
     inflationValue: document.getElementById("inflation-value"),
     selectStart: document.getElementById("select-start"),
@@ -52,8 +89,8 @@
   const state = {
     layer: "cost",
     placement: "start",
-    start: { ...DEFAULT_START },
-    goal: { ...DEFAULT_GOAL },
+    start: { ...INITIAL_POINTS.start },
+    goal: { ...INITIAL_POINTS.goal },
     inflation: 1.45,
     speed: 4,
     enabled: { astar: true, dijkstra: true, rrt: true, rrtstar: true },
@@ -76,10 +113,12 @@
 
   function dynamicObstaclesAt(timeMs) {
     const t = timeMs / 1000;
+    const scaleX = COLS / BASE_COLS;
+    const scaleY = ROWS / BASE_ROWS;
     return [
-      { x: 19 + Math.sin(t * 0.72) * 3.4, y: 14.7 },
-      { x: 29.4, y: 5.7 + Math.sin(t * 0.58 + 1.4) * 3.1 },
-      { x: 8.5 + Math.sin(t * 0.49 + 2.2) * 2.3, y: 19.2 },
+      { x: (19 + Math.sin(t * 0.72) * 3.4) * scaleX, y: 14.7 * scaleY },
+      { x: 29.4 * scaleX, y: (5.7 + Math.sin(t * 0.58 + 1.4) * 3.1) * scaleY },
+      { x: (8.5 + Math.sin(t * 0.49 + 2.2) * 2.3) * scaleX, y: 19.2 * scaleY },
     ];
   }
 
@@ -486,6 +525,7 @@
       button.classList.toggle("active", button.dataset.layer === state.layer);
     });
     elements.layerName.textContent = state.layer.toUpperCase();
+    elements.gridSizeStat.textContent = `${COLS} × ${ROWS}`;
     elements.inflation.value = String(state.inflation);
     elements.inflationValue.textContent = `${state.inflation.toFixed(2)} cell`;
     elements.speed.value = String(state.speed);
@@ -873,6 +913,29 @@
     state.layer = button.dataset.layer;
     updateInterface();
   });
+  function applyGridSize() {
+    const next = configureGrid(Number(elements.gridCols.value) || COLS, Number(elements.gridRows.value) || ROWS);
+    const points = defaultPointsForGrid(next.cols, next.rows);
+    clearRun();
+    canvas.width = WIDTH;
+    canvas.height = HEIGHT;
+    state.start = points.start;
+    state.goal = points.goal;
+    state.placement = "start";
+    state.draggingMarker = null;
+    elements.gridCols.value = String(next.cols);
+    elements.gridRows.value = String(next.rows);
+    canvas.classList.remove("is-dragging");
+    cachedField = makeCostField(dynamicObstaclesAt(performance.now()), state.inflation);
+    setNotice(`地图已调整为 ${next.cols} × ${next.rows}，障碍物与任务点已重新布局`);
+    updateInterface();
+  }
+  elements.applyGrid.addEventListener("click", applyGridSize);
+  [elements.gridCols, elements.gridRows].forEach((input) => {
+    input.addEventListener("keydown", (event) => {
+      if (event.key === "Enter") applyGridSize();
+    });
+  });
   elements.inflation.addEventListener("input", (event) => {
     clearRun();
     state.inflation = Number(event.target.value);
@@ -890,9 +953,10 @@
     updateInterface();
   });
   elements.resetPoints.addEventListener("click", () => {
+    const points = defaultPointsForGrid(COLS, ROWS);
     clearRun();
-    state.start = { ...DEFAULT_START };
-    state.goal = { ...DEFAULT_GOAL };
+    state.start = points.start;
+    state.goal = points.goal;
     state.placement = "start";
     state.draggingMarker = null;
     canvas.classList.remove("is-dragging");

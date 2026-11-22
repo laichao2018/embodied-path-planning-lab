@@ -16,7 +16,7 @@
           <div><strong>NAV STUDIO</strong><p>ROBOT PATH PLANNING WORKSPACE</p></div>
         </div>
         <div class="workspace-stats">
-          <span>GRID <b>35 × 24</b></span>
+          <span>GRID <b id="grid-size-stat">35 × 24</b></span>
           <span>PLANNERS <b>04</b></span>
           <span>OBSTACLES <b>LIVE</b></span>
         </div>
@@ -26,7 +26,13 @@
       <section class="lab-grid">
         <aside class="control-panel panel">
           <div class="panel-heading primary"><div><p>CONTROL DECK</p><h2>规划控制</h2></div><i class="panel-signal"></i></div>
-          <div class="section-label"><span>MAP MODEL</span><b>地图模型</b></div>
+          <div class="section-label"><span>MAP SIZE</span><b>32–60 列 / 20–40 行</b></div>
+          <div class="grid-size-control">
+            <label>列<input id="grid-cols" type="number" min="32" max="60" value="35" aria-label="地图列数" /></label>
+            <i>×</i>
+            <label>行<input id="grid-rows" type="number" min="20" max="40" value="24" aria-label="地图行数" /></label>
+            <button id="apply-grid" type="button">应用</button>
+          </div>
           <div class="segmented" id="layer-controls">
             <button type="button" data-layer="raw">原始</button>
             <button type="button" data-layer="inflation">膨胀</button>

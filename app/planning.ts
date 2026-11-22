@@ -26,13 +26,16 @@ export type CostField = {
   costs: number[][];
 };
 
-export const COLS = 35;
-export const ROWS = 24;
 export const CELL = 24;
-export const CANVAS_WIDTH = COLS * CELL;
-export const CANVAS_HEIGHT = ROWS * CELL;
+const BASE_COLS = 35;
+const BASE_ROWS = 24;
+export const GRID_LIMITS = { minCols: 32, maxCols: 60, minRows: 20, maxRows: 40 };
+export let COLS = BASE_COLS;
+export let ROWS = BASE_ROWS;
+export let CANVAS_WIDTH = COLS * CELL;
+export let CANVAS_HEIGHT = ROWS * CELL;
 
-export const STATIC_RECTS = [
+const BASE_STATIC_RECTS = [
   { x: 6, y: 3, w: 4, h: 7 },
   { x: 15, y: 0, w: 3, h: 8 },
   { x: 22, y: 10, w: 9, h: 3 },
@@ -41,14 +44,37 @@ export const STATIC_RECTS = [
   { x: 4, y: 14, w: 5, h: 2 },
 ];
 
+function staticRectsForGrid(cols: number, rows: number) {
+  return BASE_STATIC_RECTS.map((rect) => {
+    const x = Math.max(1, Math.min(cols - 2, Math.round((rect.x / BASE_COLS) * cols)));
+    const y = Math.max(0, Math.min(rows - 2, Math.round((rect.y / BASE_ROWS) * rows)));
+    const w = Math.max(1, Math.min(cols - 1 - x, Math.round((rect.w / BASE_COLS) * cols)));
+    const h = Math.max(1, Math.min(rows - 1 - y, Math.round((rect.h / BASE_ROWS) * rows)));
+    return { x, y, w, h };
+  });
+}
+
+export let STATIC_RECTS = staticRectsForGrid(COLS, ROWS);
+
+export function configureGrid(cols: number, rows: number) {
+  COLS = Math.max(GRID_LIMITS.minCols, Math.min(GRID_LIMITS.maxCols, Math.round(cols)));
+  ROWS = Math.max(GRID_LIMITS.minRows, Math.min(GRID_LIMITS.maxRows, Math.round(rows)));
+  CANVAS_WIDTH = COLS * CELL;
+  CANVAS_HEIGHT = ROWS * CELL;
+  STATIC_RECTS = staticRectsForGrid(COLS, ROWS);
+  return { cols: COLS, rows: ROWS };
+}
+
 export const keyOf = (point: Point) => `${Math.round(point.x)},${Math.round(point.y)}`;
 
 export function dynamicObstaclesAt(timeMs: number): Point[] {
   const t = timeMs / 1000;
+  const scaleX = COLS / BASE_COLS;
+  const scaleY = ROWS / BASE_ROWS;
   return [
-    { x: 19 + Math.sin(t * 0.72) * 3.4, y: 14.7 },
-    { x: 29.4, y: 5.7 + Math.sin(t * 0.58 + 1.4) * 3.1 },
-    { x: 8.5 + Math.sin(t * 0.49 + 2.2) * 2.3, y: 19.2 },
+    { x: (19 + Math.sin(t * 0.72) * 3.4) * scaleX, y: 14.7 * scaleY },
+    { x: 29.4 * scaleX, y: (5.7 + Math.sin(t * 0.58 + 1.4) * 3.1) * scaleY },
+    { x: (8.5 + Math.sin(t * 0.49 + 2.2) * 2.3) * scaleX, y: 19.2 * scaleY },
   ];
 }
 

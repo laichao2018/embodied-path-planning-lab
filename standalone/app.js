@@ -58,6 +58,16 @@
 
   const INITIAL_POINTS = defaultPointsForGrid(COLS, ROWS);
 
+  function defaultDynamicObstacles() {
+    const scaleX = COLS / BASE_COLS;
+    const scaleY = ROWS / BASE_ROWS;
+    return [
+      { x: 19 * scaleX, y: 14.7 * scaleY, phase: 0 },
+      { x: 29.4 * scaleX, y: 5.7 * scaleY, phase: 1.4 },
+      { x: 8.5 * scaleX, y: 19.2 * scaleY, phase: 2.2 },
+    ];
+  }
+
   const canvas = document.getElementById("map");
   const ctx = canvas.getContext("2d");
   const elements = {
@@ -69,6 +79,11 @@
     gridSizeStat: document.getElementById("grid-size-stat"),
     inflation: document.getElementById("inflation"),
     inflationValue: document.getElementById("inflation-value"),
+    dynamicMode: document.getElementById("dynamic-mode"),
+    dynamicCount: document.getElementById("dynamic-count"),
+    addDynamic: document.getElementById("add-dynamic"),
+    clearDynamic: document.getElementById("clear-dynamic"),
+    resetDynamic: document.getElementById("reset-dynamic"),
     selectStart: document.getElementById("select-start"),
     selectGoal: document.getElementById("select-goal"),
     startValue: document.getElementById("start-value"),
@@ -83,7 +98,9 @@
     timelineValue: document.getElementById("timeline-value"),
     progressBar: document.getElementById("progress-bar"),
     notice: document.getElementById("notice"),
-    events: document.getElementById("events"),
+    plannerPickerCount: document.getElementById("planner-picker-count"),
+    statusPlanner: document.getElementById("status-planner"),
+    emptyPlannerStatus: document.getElementById("empty-planner-status"),
   };
 
   const state = {
@@ -93,6 +110,10 @@
     goal: { ...INITIAL_POINTS.goal },
     inflation: 1.45,
     speed: 4,
+    dynamicMotion: "regular",
+    dynamicSeeds: defaultDynamicObstacles(),
+    placingDynamic: false,
+    focusedPlanner: "astar",
     enabled: { astar: true, dijkstra: true, rrt: true, rrtstar: true },
     results: {},
     progress: 0,
@@ -111,15 +132,28 @@
     return `${Math.round(point.x).toString().padStart(2, "0")},${Math.round(point.y).toString().padStart(2, "0")}`;
   }
 
-  function dynamicObstaclesAt(timeMs) {
+  function dynamicObstaclesAt(timeMs, seeds = state.dynamicSeeds, motion = state.dynamicMotion) {
     const t = timeMs / 1000;
-    const scaleX = COLS / BASE_COLS;
-    const scaleY = ROWS / BASE_ROWS;
-    return [
-      { x: (19 + Math.sin(t * 0.72) * 3.4) * scaleX, y: 14.7 * scaleY },
-      { x: 29.4 * scaleX, y: (5.7 + Math.sin(t * 0.58 + 1.4) * 3.1) * scaleY },
-      { x: (8.5 + Math.sin(t * 0.49 + 2.2) * 2.3) * scaleX, y: 19.2 * scaleY },
-    ];
+    return seeds.map((seed, index) => {
+      let offsetX = 0;
+      let offsetY = 0;
+      if (motion === "random") {
+        offsetX = Math.sin(t * (0.41 + index * 0.023) + seed.phase) * 2.1
+          + Math.sin(t * (0.77 + index * 0.017) + seed.phase * 1.9) * 0.9;
+        offsetY = Math.cos(t * (0.37 + index * 0.019) + seed.phase * 1.3) * 1.8
+          + Math.sin(t * (0.69 + index * 0.013) + seed.phase * 2.4) * 0.8;
+      } else if (index % 3 === 1) {
+        offsetY = Math.sin(t * 0.58 + seed.phase) * 3.1;
+      } else {
+        const speed = index % 3 === 0 ? 0.72 : 0.49;
+        const amplitude = index % 3 === 0 ? 3.4 : 2.3;
+        offsetX = Math.sin(t * speed + seed.phase) * amplitude;
+      }
+      return {
+        x: Math.max(2, Math.min(COLS - 3, seed.x + offsetX)),
+        y: Math.max(2, Math.min(ROWS - 3, seed.y + offsetY)),
+      };
+    });
   }
 
   function addRectCells(target, x, y, width, height) {
@@ -534,10 +568,24 @@
     elements.goalValue.textContent = formatCell(state.goal);
     elements.selectStart.classList.toggle("selected", state.placement === "start");
     elements.selectGoal.classList.toggle("selected", state.placement === "goal");
+    elements.dynamicCount.textContent = `${state.dynamicSeeds.length} 个动态障碍`;
+    elements.dynamicMode.querySelectorAll("button").forEach((button) => {
+      button.classList.toggle("active", button.dataset.motion === state.dynamicMotion);
+    });
+    elements.addDynamic.classList.toggle("active", state.placingDynamic);
+    elements.addDynamic.textContent = state.placingDynamic ? "结束放置" : "添加障碍";
     elements.notice.textContent = state.notice;
     PLANNERS.forEach((planner) => {
       document.getElementById(`enable-${planner}`).checked = state.enabled[planner];
     });
+    const enabledPlanners = PLANNERS.filter((planner) => state.enabled[planner]);
+    if (!state.enabled[state.focusedPlanner] && enabledPlanners.length) state.focusedPlanner = enabledPlanners[0];
+    elements.plannerPickerCount.textContent = `${enabledPlanners.length} / ${PLANNERS.length}`;
+    const options = enabledPlanners.map((planner) => `<option value="${planner}">${NAMES[planner]}</option>`).join("");
+    if (elements.statusPlanner.innerHTML !== options) elements.statusPlanner.innerHTML = options;
+    elements.statusPlanner.disabled = !enabledPlanners.length;
+    if (enabledPlanners.length) elements.statusPlanner.value = state.focusedPlanner;
+    elements.emptyPlannerStatus.hidden = Boolean(enabledPlanners.length);
     updateTelemetry();
   }
 
@@ -553,6 +601,7 @@
     elements.runState.classList.toggle("is-running", state.running);
     if (state.running) elements.runState.textContent = `SEARCH ${Math.round(percent)}%`;
     else if (state.executing) elements.runState.textContent = "ROBOT EXECUTING";
+    else if (state.placingDynamic) elements.runState.textContent = "ADD DYNAMIC OBSTACLE";
     else if (state.draggingMarker) elements.runState.textContent = `DRAG ${state.draggingMarker.toUpperCase()}`;
     else elements.runState.textContent = "DRAG MARKERS";
 
@@ -573,6 +622,7 @@
       const visibleGenerated = result
         ? 1 + result.steps.slice(0, visible).reduce((total, step) => total + step.generated.length, 0)
         : 0;
+      card.hidden = planner !== state.focusedPlanner || !state.enabled[planner];
       card.querySelector("strong").textContent = !state.enabled[planner]
         ? "关闭"
         : !result
@@ -588,24 +638,20 @@
       card.querySelector("[data-path]").textContent = done && result.found
         ? `${(result.pathLength * 0.25).toFixed(1)}m`
         : "—";
+      const statusText = card.querySelector("[data-status-text]");
+      statusText.textContent = !result
+        ? "等待启动路径规划"
+        : done
+          ? result.found ? `已找到路径，长度 ${(result.pathLength * 0.25).toFixed(1)}m` : "搜索结束，未找到路径"
+          : currentStep ? `正在检查 ${formatCell(currentStep.pick)}，本步新增 ${currentStep.generated.length} 个候选点` : "正在初始化搜索空间";
     });
-
-    if (!hasResults) {
-      elements.events.innerHTML = "<span><b>地图</b> 障碍与代价数据已载入</span><span><b>操作</b> 设置起终点后启动路径规划</span><span><b>回放</b> 生成结果后可拖动时间轴</span>";
-      return;
-    }
-    elements.events.innerHTML = resultList().map((result) => {
-      const index = Math.min(Math.floor(state.progress), result.steps.length) - 1;
-      const step = result.steps[index];
-      const done = Math.floor(state.progress) >= result.steps.length;
-      const message = done
-        ? result.found ? `已找到路径，长度 ${(result.pathLength * 0.25).toFixed(1)}m` : "搜索结束，未找到路径"
-        : step ? `正在检查 ${formatCell(step.pick)}，新增 ${step.generated.length} 个候选点` : "等待开始推演";
-      return `<span><b style="color:${COLORS[result.key]}">${NAMES[result.key]}</b> ${message}</span>`;
-    }).join("") + (state.executing ? "<span><b>机器人</b> 正在沿优先路径移动</span>" : "");
   }
 
   function startPlanning() {
+    state.placingDynamic = false;
+    canvas.classList.remove("is-placing-dynamic");
+    elements.addDynamic.classList.remove("active");
+    elements.addDynamic.textContent = "添加障碍";
     const stepsTotal = maxSteps();
     if (resultList().length && state.progress < stepsTotal) {
       state.running = !state.running;
@@ -655,12 +701,41 @@
     const marker = Math.min(startDistance, goalDistance) <= 1.15
       ? startDistance <= goalDistance ? "start" : "goal"
       : null;
-    if (!marker) return;
+    if (!marker) {
+      if (!state.placingDynamic) return;
+      const point = pointerGridPosition(event, true);
+      const staticField = makeCostField([], state.inflation);
+      if (staticField.blocked.has(keyOf(point))) {
+        setNotice("这里是静态障碍或膨胀区，不能放置动态障碍");
+        return;
+      }
+      if (Math.hypot(point.x - state.start.x, point.y - state.start.y) < 2 || Math.hypot(point.x - state.goal.x, point.y - state.goal.y) < 2) {
+        setNotice("动态障碍需要与起终点保持至少 2 个栅格");
+        return;
+      }
+      if (state.dynamicSeeds.some((seed) => Math.hypot(seed.x - point.x, seed.y - point.y) < 1.5)) {
+        setNotice("此处附近已经有一个动态障碍");
+        return;
+      }
+      if (state.dynamicSeeds.length >= 8) {
+        setNotice("最多可放置 8 个动态障碍");
+        return;
+      }
+      event.preventDefault();
+      clearRun();
+      state.dynamicSeeds.push({ ...point, phase: state.dynamicSeeds.length * 0.83 + 0.4 });
+      cachedField = makeCostField(dynamicObstaclesAt(performance.now()), state.inflation);
+      setNotice(`已添加动态障碍 D${state.dynamicSeeds.length}，可继续点击地图添加`);
+      updateInterface();
+      return;
+    }
     event.preventDefault();
     canvas.setPointerCapture(event.pointerId);
     clearRun();
+    state.placingDynamic = false;
     state.draggingMarker = marker;
     state.placement = marker;
+    canvas.classList.remove("is-placing-dynamic");
     canvas.classList.add("is-dragging");
     setNotice(marker === "start" ? "正在拖动起点图标" : "正在拖动终点图标");
     updateInterface();
@@ -711,7 +786,7 @@
       ctx.stroke();
     }
     ctx.beginPath();
-    ctx.fillStyle = "#071116";
+    ctx.fillStyle = "#ffffff";
     ctx.strokeStyle = color;
     ctx.lineWidth = 3;
     ctx.arc(0, 0, 14, 0, Math.PI * 2);
@@ -752,7 +827,7 @@
     const field = cachedField;
     const dynamicObstacles = dynamicObstaclesAt(now);
     ctx.clearRect(0, 0, WIDTH, HEIGHT);
-    ctx.fillStyle = "#091219";
+    ctx.fillStyle = "#ffffff";
     ctx.fillRect(0, 0, WIDTH, HEIGHT);
 
     if (state.layer === "cost") {
@@ -761,14 +836,14 @@
           if (field.raw.has(`${x},${y}`)) continue;
           const cost = field.costs[y][x];
           if (cost <= 1.05) continue;
-          const strength = Math.min(0.5, (cost - 1) / 12);
-          ctx.fillStyle = `rgba(255, ${Math.round(154 - strength * 90)}, 73, ${strength})`;
+          const strength = Math.min(1, (cost - 1) / 8);
+          ctx.fillStyle = `rgba(239, 68, 68, ${0.05 + strength * 0.5})`;
           ctx.fillRect(x * CELL, y * CELL, CELL, CELL);
         }
       }
     }
     if (state.layer === "inflation") {
-      ctx.fillStyle = "rgba(255, 135, 80, .24)";
+      ctx.fillStyle = "rgba(239, 68, 68, .3)";
       field.blocked.forEach((key) => {
         if (field.raw.has(key)) return;
         const [x, y] = key.split(",").map(Number);
@@ -776,7 +851,7 @@
       });
     }
 
-    ctx.strokeStyle = "rgba(137, 174, 187, .095)";
+    ctx.strokeStyle = "rgba(71, 85, 105, .14)";
     ctx.lineWidth = 1;
     for (let x = 0; x <= WIDTH; x += CELL) {
       ctx.beginPath();
@@ -791,8 +866,8 @@
       ctx.stroke();
     }
 
-    ctx.fillStyle = "#33434c";
-    ctx.strokeStyle = "#71828c";
+    ctx.fillStyle = "#374151";
+    ctx.strokeStyle = "#111827";
     ctx.lineWidth = 1.5;
     STATIC_RECTS.forEach((rect) => {
       ctx.fillRect(rect.x * CELL, rect.y * CELL, rect.w * CELL, rect.h * CELL);
@@ -802,23 +877,23 @@
       const pixel = pointToCanvas(point);
       if (state.layer !== "raw") {
         ctx.beginPath();
-        ctx.fillStyle = "rgba(255, 92, 92, .11)";
+        ctx.fillStyle = "rgba(239, 68, 68, .12)";
         ctx.arc(pixel.x, pixel.y, (state.inflation + 1) * CELL, 0, Math.PI * 2);
         ctx.fill();
-        ctx.strokeStyle = "rgba(255, 92, 92, .32)";
+        ctx.strokeStyle = "rgba(220, 38, 38, .5)";
         ctx.stroke();
       }
       ctx.beginPath();
-      ctx.fillStyle = "#f4f7f8";
+      ctx.fillStyle = "#1f2937";
       ctx.arc(pixel.x, pixel.y, 13, 0, Math.PI * 2);
       ctx.fill();
-      ctx.fillStyle = "#172026";
+      ctx.fillStyle = "#ffffff";
       ctx.font = "700 9px ui-monospace, monospace";
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
       ctx.fillText(`D${index + 1}`, pixel.x, pixel.y + 1);
     });
-    ctx.strokeStyle = "#748994";
+    ctx.strokeStyle = "#334155";
     ctx.lineWidth = 8;
     ctx.strokeRect(4, 4, WIDTH - 8, HEIGHT - 8);
 
@@ -828,7 +903,7 @@
       const steps = result.steps.slice(0, visible);
       if (result.key === "rrt" || result.key === "rrtstar") {
         ctx.lineWidth = 1.15;
-        ctx.strokeStyle = `${color}66`;
+        ctx.strokeStyle = `${color}99`;
         steps.forEach((step) => {
           if (!step.edge) return;
           const a = pointToCanvas(step.edge[0]);
@@ -841,12 +916,12 @@
       } else {
         steps.forEach((step) => {
           const pick = pointToCanvas(step.pick);
-          ctx.fillStyle = `${color}12`;
+          ctx.fillStyle = `${color}20`;
           ctx.fillRect(pick.x - CELL / 2 + 2, pick.y - CELL / 2 + 2, CELL - 4, CELL - 4);
           step.generated.forEach((point) => {
             const generated = pointToCanvas(point);
             ctx.beginPath();
-            ctx.fillStyle = `${color}55`;
+            ctx.fillStyle = `${color}aa`;
             ctx.arc(generated.x, generated.y, 2.2, 0, Math.PI * 2);
             ctx.fill();
           });
@@ -923,9 +998,11 @@
     state.goal = points.goal;
     state.placement = "start";
     state.draggingMarker = null;
+    state.placingDynamic = false;
+    state.dynamicSeeds = defaultDynamicObstacles();
     elements.gridCols.value = String(next.cols);
     elements.gridRows.value = String(next.rows);
-    canvas.classList.remove("is-dragging");
+    canvas.classList.remove("is-dragging", "is-placing-dynamic");
     cachedField = makeCostField(dynamicObstaclesAt(performance.now()), state.inflation);
     setNotice(`地图已调整为 ${next.cols} × ${next.rows}，障碍物与任务点已重新布局`);
     updateInterface();
@@ -942,12 +1019,48 @@
     cachedField = makeCostField(dynamicObstaclesAt(performance.now()), state.inflation);
     updateInterface();
   });
+  elements.dynamicMode.addEventListener("click", (event) => {
+    const button = event.target.closest("button[data-motion]");
+    if (!button) return;
+    clearRun();
+    state.dynamicMotion = button.dataset.motion;
+    setNotice(state.dynamicMotion === "regular" ? "动态障碍已切换为规则往复运动" : "动态障碍已切换为随机平滑运动");
+    updateInterface();
+  });
+  elements.addDynamic.addEventListener("click", () => {
+    state.placingDynamic = !state.placingDynamic;
+    canvas.classList.toggle("is-placing-dynamic", state.placingDynamic);
+    setNotice(state.placingDynamic ? "请在地图空白区域点击放置动态障碍" : "已结束放置动态障碍");
+    updateInterface();
+  });
+  elements.clearDynamic.addEventListener("click", () => {
+    clearRun();
+    state.dynamicSeeds = [];
+    state.placingDynamic = false;
+    canvas.classList.remove("is-placing-dynamic");
+    cachedField = makeCostField([], state.inflation);
+    setNotice("动态障碍已清空");
+    updateInterface();
+  });
+  elements.resetDynamic.addEventListener("click", () => {
+    clearRun();
+    state.dynamicSeeds = defaultDynamicObstacles();
+    state.placingDynamic = false;
+    canvas.classList.remove("is-placing-dynamic");
+    cachedField = makeCostField(dynamicObstaclesAt(performance.now()), state.inflation);
+    setNotice("已恢复默认动态障碍");
+    updateInterface();
+  });
   elements.selectStart.addEventListener("click", () => {
+    state.placingDynamic = false;
+    canvas.classList.remove("is-placing-dynamic");
     state.placement = "start";
     setNotice("请拖动地图上的绿色起点图标");
     updateInterface();
   });
   elements.selectGoal.addEventListener("click", () => {
+    state.placingDynamic = false;
+    canvas.classList.remove("is-placing-dynamic");
     state.placement = "goal";
     setNotice("请拖动地图上的橙色终点图标");
     updateInterface();
@@ -959,7 +1072,8 @@
     state.goal = points.goal;
     state.placement = "start";
     state.draggingMarker = null;
-    canvas.classList.remove("is-dragging");
+    state.placingDynamic = false;
+    canvas.classList.remove("is-dragging", "is-placing-dynamic");
     setNotice("起终点已重置，可直接拖动图标调整位置");
     updateInterface();
   });
@@ -967,8 +1081,16 @@
     document.getElementById(`enable-${planner}`).addEventListener("change", (event) => {
       clearRun();
       state.enabled[planner] = event.target.checked;
+      if (!state.enabled[state.focusedPlanner]) {
+        const nextFocus = PLANNERS.find((key) => state.enabled[key]);
+        if (nextFocus) state.focusedPlanner = nextFocus;
+      }
       updateInterface();
     });
+  });
+  elements.statusPlanner.addEventListener("change", (event) => {
+    state.focusedPlanner = event.target.value;
+    updateTelemetry();
   });
   elements.speed.addEventListener("input", (event) => {
     state.speed = Number(event.target.value);

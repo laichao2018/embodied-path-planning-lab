@@ -10,6 +10,7 @@ import {
   ROWS,
   STATIC_RECTS,
   configureGrid,
+  defaultDynamicObstacles,
   dynamicObstaclesAt,
   makeCostField,
   pointToCanvas,
@@ -17,6 +18,8 @@ import {
   type PlannerKey,
   type PlannerResult,
   type Point,
+  type DynamicMotion,
+  type DynamicObstacleSeed,
 } from "./planning";
 
 type Layer = "raw" | "inflation" | "cost";
@@ -35,13 +38,6 @@ const NAMES: Record<PlannerKey, string> = {
   dijkstra: "DIJKSTRA",
   rrt: "RRT",
   rrtstar: "RRT*",
-};
-
-const DESCRIPTIONS: Record<PlannerKey, string> = {
-  astar: "f = g + h / 目标导向",
-  dijkstra: "priority = g / 等代价扩展",
-  rrt: "sample + steer / 树生长",
-  rrtstar: "choose parent + rewire / 渐近优化",
 };
 
 const FORMULAS: Record<PlannerKey, string> = {
@@ -90,6 +86,9 @@ export default function Home() {
   const [goal, setGoal] = useState<Point>(INITIAL_POINTS.goal);
   const [inflation, setInflation] = useState(1.45);
   const [speed, setSpeed] = useState(4);
+  const [dynamicMotion, setDynamicMotion] = useState<DynamicMotion>("regular");
+  const [dynamicSeeds, setDynamicSeeds] = useState<DynamicObstacleSeed[]>(() => defaultDynamicObstacles());
+  const [placingDynamic, setPlacingDynamic] = useState(false);
   const [enabled, setEnabled] = useState<Record<PlannerKey, boolean>>({
     astar: true,
     dijkstra: true,
@@ -102,6 +101,7 @@ export default function Home() {
   const [executing, setExecuting] = useState(false);
   const [executionCursor, setExecutionCursor] = useState(0);
   const [draggingMarker, setDraggingMarker] = useState<"start" | "goal" | null>(null);
+  const [focusedPlanner, setFocusedPlanner] = useState<PlannerKey>("astar");
   const [notice, setNotice] = useState("拖动地图上的起点或终点图标设置位置");
 
   const resultList = useMemo(
@@ -130,6 +130,8 @@ export default function Home() {
     setGoal(points.goal);
     setPlacement("start");
     setDraggingMarker(null);
+    setPlacingDynamic(false);
+    setDynamicSeeds(defaultDynamicObstacles());
     setNotice(`地图已调整为 ${next.cols} × ${next.rows}，障碍物与任务点已重新布局`);
   };
 
@@ -171,19 +173,19 @@ export default function Home() {
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
     let frame = 0;
-    let cachedField = makeCostField(dynamicObstaclesAt(performance.now()), inflation);
+    let cachedField = makeCostField(dynamicObstaclesAt(performance.now(), dynamicSeeds, dynamicMotion), inflation);
     let lastFieldUpdate = 0;
 
     const draw = (now: number) => {
       if (now - lastFieldUpdate > 160) {
-        cachedField = makeCostField(dynamicObstaclesAt(now), inflation);
+        cachedField = makeCostField(dynamicObstaclesAt(now, dynamicSeeds, dynamicMotion), inflation);
         lastFieldUpdate = now;
       }
-      const dynamicObstacles = dynamicObstaclesAt(now);
+      const dynamicObstacles = dynamicObstaclesAt(now, dynamicSeeds, dynamicMotion);
       const field = cachedField;
 
       ctx.clearRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
-      ctx.fillStyle = "#091219";
+      ctx.fillStyle = "#ffffff";
       ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
 
       if (layer === "cost") {
@@ -192,15 +194,15 @@ export default function Home() {
             if (field.raw.has(`${x},${y}`)) continue;
             const cost = field.costs[y][x];
             if (cost <= 1.05) continue;
-            const strength = Math.min(0.5, (cost - 1) / 12);
-            ctx.fillStyle = `rgba(255, ${Math.round(154 - strength * 90)}, 73, ${strength})`;
+            const strength = Math.min(1, (cost - 1) / 8);
+            ctx.fillStyle = `rgba(239, 68, 68, ${0.05 + strength * 0.5})`;
             ctx.fillRect(x * CELL, y * CELL, CELL, CELL);
           }
         }
       }
 
       if (layer === "inflation") {
-        ctx.fillStyle = "rgba(255, 135, 80, .24)";
+        ctx.fillStyle = "rgba(239, 68, 68, .3)";
         field.blocked.forEach((key) => {
           if (field.raw.has(key)) return;
           const [x, y] = key.split(",").map(Number);
@@ -208,7 +210,7 @@ export default function Home() {
         });
       }
 
-      ctx.strokeStyle = "rgba(137, 174, 187, .095)";
+      ctx.strokeStyle = "rgba(71, 85, 105, .14)";
       ctx.lineWidth = 1;
       for (let x = 0; x <= CANVAS_WIDTH; x += CELL) {
         ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, CANVAS_HEIGHT); ctx.stroke();
@@ -217,8 +219,8 @@ export default function Home() {
         ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(CANVAS_WIDTH, y); ctx.stroke();
       }
 
-      ctx.fillStyle = "#33434c";
-      ctx.strokeStyle = "#71828c";
+      ctx.fillStyle = "#374151";
+      ctx.strokeStyle = "#111827";
       ctx.lineWidth = 1.5;
       STATIC_RECTS.forEach((rect) => {
         ctx.fillRect(rect.x * CELL, rect.y * CELL, rect.w * CELL, rect.h * CELL);
@@ -229,24 +231,24 @@ export default function Home() {
         const pixel = pointToCanvas(point);
         if (layer !== "raw") {
           ctx.beginPath();
-          ctx.fillStyle = "rgba(255, 92, 92, .11)";
+          ctx.fillStyle = "rgba(239, 68, 68, .12)";
           ctx.arc(pixel.x, pixel.y, (inflation + 1) * CELL, 0, Math.PI * 2);
           ctx.fill();
-          ctx.strokeStyle = "rgba(255, 92, 92, .32)";
+          ctx.strokeStyle = "rgba(220, 38, 38, .5)";
           ctx.stroke();
         }
         ctx.beginPath();
-        ctx.fillStyle = "#f4f7f8";
+        ctx.fillStyle = "#1f2937";
         ctx.arc(pixel.x, pixel.y, 13, 0, Math.PI * 2);
         ctx.fill();
-        ctx.fillStyle = "#172026";
+        ctx.fillStyle = "#ffffff";
         ctx.font = "700 9px ui-monospace";
         ctx.textAlign = "center";
         ctx.textBaseline = "middle";
         ctx.fillText(`D${index + 1}`, pixel.x, pixel.y + 1);
       });
 
-      ctx.strokeStyle = "#748994";
+      ctx.strokeStyle = "#334155";
       ctx.lineWidth = 8;
       ctx.strokeRect(4, 4, CANVAS_WIDTH - 8, CANVAS_HEIGHT - 8);
 
@@ -257,7 +259,7 @@ export default function Home() {
 
         if (result.key === "rrt" || result.key === "rrtstar") {
           ctx.lineWidth = 1.15;
-          ctx.strokeStyle = `${color}66`;
+          ctx.strokeStyle = `${color}99`;
           steps.forEach((step) => {
             if (!step.edge) return;
             const a = pointToCanvas(step.edge[0]);
@@ -267,12 +269,12 @@ export default function Home() {
         } else {
           steps.forEach((step) => {
             const pick = pointToCanvas(step.pick);
-            ctx.fillStyle = `${color}12`;
+            ctx.fillStyle = `${color}20`;
             ctx.fillRect(pick.x - CELL / 2 + 2, pick.y - CELL / 2 + 2, CELL - 4, CELL - 4);
             step.generated.forEach((point) => {
               const generated = pointToCanvas(point);
               ctx.beginPath();
-              ctx.fillStyle = `${color}55`;
+              ctx.fillStyle = `${color}aa`;
               ctx.arc(generated.x, generated.y, 2.2, 0, Math.PI * 2);
               ctx.fill();
             });
@@ -319,7 +321,7 @@ export default function Home() {
           ctx.stroke();
         }
         ctx.beginPath();
-        ctx.fillStyle = "#071116";
+        ctx.fillStyle = "#ffffff";
         ctx.strokeStyle = color;
         ctx.lineWidth = 3;
         ctx.arc(0, 0, 14, 0, Math.PI * 2);
@@ -373,9 +375,10 @@ export default function Home() {
     };
     frame = window.requestAnimationFrame(draw);
     return () => window.cancelAnimationFrame(frame);
-  }, [draggingMarker, executionCursor, executionResult, gridSize, inflation, layer, progress, resultList, start, goal]);
+  }, [draggingMarker, dynamicMotion, dynamicSeeds, executionCursor, executionResult, gridSize, inflation, layer, progress, resultList, start, goal]);
 
   const plan = () => {
+    setPlacingDynamic(false);
     if (resultList.length && progress < maxSteps) {
       setRunning((value) => !value);
       setNotice(running ? "推演已暂停" : "继续推演搜索过程");
@@ -386,7 +389,7 @@ export default function Home() {
       setNotice("请至少选择一种规划算法");
       return;
     }
-    const snapshot = dynamicObstaclesAt(performance.now());
+    const snapshot = dynamicObstaclesAt(performance.now(), dynamicSeeds, dynamicMotion);
     const field = makeCostField(snapshot, inflation);
     if (field.blocked.has(`${start.x},${start.y}`) || field.blocked.has(`${goal.x},${goal.y}`)) {
       setNotice("起点或终点位于膨胀障碍区，请重新放置");
@@ -423,10 +426,36 @@ export default function Home() {
     const marker = Math.min(startDistance, goalDistance) <= 1.15
       ? startDistance <= goalDistance ? "start" : "goal"
       : null;
-    if (!marker) return;
+    if (!marker) {
+      if (!placingDynamic) return;
+      const point = pointerGridPosition(event, true);
+      const staticField = makeCostField([], inflation);
+      if (staticField.blocked.has(`${point.x},${point.y}`)) {
+        setNotice("这里是静态障碍或膨胀区，不能放置动态障碍");
+        return;
+      }
+      if (Math.hypot(point.x - start.x, point.y - start.y) < 2 || Math.hypot(point.x - goal.x, point.y - goal.y) < 2) {
+        setNotice("动态障碍需要与起终点保持至少 2 个栅格");
+        return;
+      }
+      if (dynamicSeeds.some((seed) => Math.hypot(seed.x - point.x, seed.y - point.y) < 1.5)) {
+        setNotice("此处附近已经有一个动态障碍");
+        return;
+      }
+      if (dynamicSeeds.length >= 8) {
+        setNotice("最多可放置 8 个动态障碍");
+        return;
+      }
+      event.preventDefault();
+      clearRun();
+      setDynamicSeeds((current) => [...current, { ...point, phase: current.length * 0.83 + 0.4 }]);
+      setNotice(`已添加动态障碍 D${dynamicSeeds.length + 1}，可继续点击地图添加`);
+      return;
+    }
     event.preventDefault();
     event.currentTarget.setPointerCapture(event.pointerId);
     clearRun();
+    setPlacingDynamic(false);
     setDraggingMarker(marker);
     setPlacement(marker);
     setNotice(marker === "start" ? "正在拖动起点图标" : "正在拖动终点图标");
@@ -435,7 +464,7 @@ export default function Home() {
   const moveMarker = (event: React.PointerEvent<HTMLCanvasElement>) => {
     if (!draggingMarker) return;
     const point = pointerGridPosition(event, true);
-    const field = makeCostField(dynamicObstaclesAt(performance.now()), inflation);
+    const field = makeCostField(dynamicObstaclesAt(performance.now(), dynamicSeeds, dynamicMotion), inflation);
     if (field.blocked.has(`${point.x},${point.y}`)) {
       setNotice("此处是障碍或膨胀区，图标不能放置");
       return;
@@ -481,6 +510,30 @@ export default function Home() {
   };
 
   const visibleStep = (result: PlannerResult) => result.steps[Math.min(Math.floor(progress), result.steps.length) - 1];
+  const enabledPlanners = PLANNER_KEYS.filter((key) => enabled[key]);
+  const activeStatusPlanner = enabled[focusedPlanner] ? focusedPlanner : enabledPlanners[0] ?? focusedPlanner;
+  const statusResult = results[activeStatusPlanner];
+  const statusVisible = statusResult ? Math.min(Math.floor(progress), statusResult.steps.length) : 0;
+  const statusDone = Boolean(statusResult && statusVisible >= statusResult.steps.length);
+  const statusStep = statusResult ? visibleStep(statusResult) : undefined;
+  const statusGenerated = statusResult
+    ? 1 + statusResult.steps.slice(0, statusVisible).reduce((total, step) => total + step.generated.length, 0)
+    : 0;
+  const statusMessage = !statusResult
+    ? "等待启动路径规划"
+    : statusDone
+      ? statusResult.found ? `已找到路径，长度 ${(statusResult.pathLength * 0.25).toFixed(1)}m` : "搜索结束，未找到路径"
+      : statusStep ? `正在检查 ${formatCell(statusStep.pick)}，本步新增 ${statusStep.generated.length} 个候选点` : "正在初始化搜索空间";
+
+  const togglePlanner = (key: PlannerKey) => {
+    const next = { ...enabled, [key]: !enabled[key] };
+    clearRun();
+    setEnabled(next);
+    if (!next[focusedPlanner]) {
+      const nextFocus = PLANNER_KEYS.find((planner) => next[planner]);
+      if (nextFocus) setFocusedPlanner(nextFocus);
+    }
+  };
 
   return (
     <main className="lab-page">
@@ -520,22 +573,64 @@ export default function Home() {
             <input type="range" min="0.8" max="2.4" step="0.05" value={inflation} onChange={(event) => { clearRun(); setInflation(Number(event.target.value)); }} />
           </label>
 
+          <div className="section-label"><span>DYNAMIC</span><b>{dynamicSeeds.length} 个动态障碍</b></div>
+          <div className="segmented dynamic-mode-control">
+            {(["regular", "random"] as DynamicMotion[]).map((mode) => (
+              <button key={mode} type="button" className={dynamicMotion === mode ? "active" : ""} onClick={() => { clearRun(); setDynamicMotion(mode); setNotice(mode === "regular" ? "动态障碍已切换为规则往复运动" : "动态障碍已切换为随机平滑运动"); }}>
+                {mode === "regular" ? "规则移动" : "随机移动"}
+              </button>
+            ))}
+          </div>
+          <div className="dynamic-actions">
+            <button type="button" className={placingDynamic ? "active" : ""} onClick={() => { setPlacingDynamic((current) => !current); setNotice(placingDynamic ? "已结束放置动态障碍" : "请在地图空白区域点击放置动态障碍"); }}>{placingDynamic ? "结束放置" : "添加障碍"}</button>
+            <button type="button" onClick={() => { clearRun(); setDynamicSeeds([]); setPlacingDynamic(false); setNotice("动态障碍已清空"); }}>清空</button>
+            <button type="button" onClick={() => { clearRun(); setDynamicSeeds(defaultDynamicObstacles()); setPlacingDynamic(false); setNotice("已恢复默认动态障碍"); }}>默认</button>
+          </div>
+
           <div className="section-label"><span>MISSION</span><b>拖拽任务点</b></div>
           <div className="point-readout">
-            <button type="button" className={placement === "start" ? "selected" : ""} onClick={() => { setPlacement("start"); setNotice("请拖动地图上的绿色起点图标"); }}><i className="start-swatch" /> 起点 <b>{formatCell(start)}</b></button>
-            <button type="button" className={placement === "goal" ? "selected" : ""} onClick={() => { setPlacement("goal"); setNotice("请拖动地图上的橙色终点图标"); }}><i className="goal-swatch" /> 终点 <b>{formatCell(goal)}</b></button>
+            <button type="button" className={placement === "start" ? "selected" : ""} onClick={() => { setPlacingDynamic(false); setPlacement("start"); setNotice("请拖动地图上的绿色起点图标"); }}><i className="start-swatch" /> 起点 <b>{formatCell(start)}</b></button>
+            <button type="button" className={placement === "goal" ? "selected" : ""} onClick={() => { setPlacingDynamic(false); setPlacement("goal"); setNotice("请拖动地图上的橙色终点图标"); }}><i className="goal-swatch" /> 终点 <b>{formatCell(goal)}</b></button>
           </div>
           <p className="drag-hint">按住地图中的图标并拖到自由栅格</p>
           <button className="reset-button" type="button" onClick={resetPoints}>重置起终点</button>
 
-          <div className="section-label"><span>PLANNERS</span><b>算法选择</b></div>
-          <div className="algorithm-list">
-            {PLANNER_KEYS.map((key) => (
-              <label key={key} className={`planner-option ${key}`}>
-                <input type="checkbox" checked={enabled[key]} onChange={() => { clearRun(); setEnabled((current) => ({ ...current, [key]: !current[key] })); }} />
-                <i className={key} />{NAMES[key]}<small>{key === "astar" ? "f=g+h" : key === "dijkstra" ? "g only" : key === "rrt" ? "sample" : "rewire"}</small>
-              </label>
-            ))}
+          <div className="section-label"><span>PLANNERS</span><b>算法与搜索状态</b></div>
+          <details className="planner-picker">
+            <summary>选择规划算法 <b>{enabledPlanners.length} / {PLANNER_KEYS.length}</b></summary>
+            <div className="algorithm-list">
+              {PLANNER_KEYS.map((key) => (
+                <label key={key} className={`planner-option ${key}`}>
+                  <input type="checkbox" checked={enabled[key]} onChange={() => togglePlanner(key)} />
+                  <i className={key} />{NAMES[key]}<small>{key === "astar" ? "f=g+h" : key === "dijkstra" ? "g only" : key === "rrt" ? "sample" : "rewire"}</small>
+                </label>
+              ))}
+            </div>
+          </details>
+
+          <div className="planner-status-view">
+            {enabledPlanners.length ? (
+              <>
+                <label className="status-selector">查看状态
+                  <select value={activeStatusPlanner} onChange={(event) => setFocusedPlanner(event.target.value as PlannerKey)}>
+                    {enabledPlanners.map((key) => <option key={key} value={key}>{NAMES[key]}</option>)}
+                  </select>
+                </label>
+                <div className={`telemetry-card compact ${activeStatusPlanner}`}>
+                  <div className="telemetry-title"><p>{NAMES[activeStatusPlanner]}</p><strong>{!statusResult ? "" : statusDone ? statusResult.found ? "已完成" : "无路径" : "计算中"}</strong></div>
+                  <div className="algorithm-formula"><span>核心规则</span><b>{FORMULAS[activeStatusPlanner]}</b></div>
+                  <dl>
+                    <div><dt>扩展</dt><dd>{statusVisible}</dd></div>
+                    <div><dt>生成</dt><dd>{statusGenerated}</dd></div>
+                    <div><dt>待选</dt><dd>{statusStep?.open ?? 0}</dd></div>
+                    <div><dt>已检</dt><dd>{statusStep?.closed ?? 0}</dd></div>
+                    <div><dt>耗时</dt><dd>{statusResult ? `${statusResult.durationMs.toFixed(1)}ms` : "—"}</dd></div>
+                    <div><dt>路径</dt><dd>{statusDone && statusResult?.found ? `${(statusResult.pathLength * 0.25).toFixed(1)}m` : "—"}</dd></div>
+                  </dl>
+                  <p className="status-explanation">{statusMessage}</p>
+                </div>
+              </>
+            ) : <p className="empty-planner-status">请从上方下拉框勾选至少一种算法</p>}
           </div>
 
           <label className="range-control speed-control">
@@ -551,18 +646,18 @@ export default function Home() {
         <section className="map-panel panel">
           <div className="map-toolbar">
             <div><span className="pulse" /> PLANNING WORLD <i>/</i> {layer.toUpperCase()}</div>
-            <p className={running ? "is-running" : ""}>{running ? `SEARCH ${Math.round((progress / Math.max(maxSteps, 1)) * 100)}%` : executing ? "ROBOT EXECUTING" : draggingMarker ? `DRAG ${draggingMarker.toUpperCase()}` : "DRAG MARKERS"}</p>
+            <p className={running ? "is-running" : ""}>{running ? `SEARCH ${Math.round((progress / Math.max(maxSteps, 1)) * 100)}%` : executing ? "ROBOT EXECUTING" : placingDynamic ? "ADD DYNAMIC OBSTACLE" : draggingMarker ? `DRAG ${draggingMarker.toUpperCase()}` : "DRAG MARKERS"}</p>
           </div>
           <canvas
             ref={canvasRef}
-            className={draggingMarker ? "is-dragging" : ""}
+            className={placingDynamic ? "is-placing-dynamic" : draggingMarker ? "is-dragging" : ""}
             width={CANVAS_WIDTH}
             height={CANVAS_HEIGHT}
             onPointerDown={beginMarkerDrag}
             onPointerMove={moveMarker}
             onPointerUp={endMarkerDrag}
             onPointerCancel={endMarkerDrag}
-            aria-label="交互式路径规划地图，拖动起点箭头或终点旗帜设置位置"
+            aria-label="交互式路径规划地图，可拖动起终点或点击放置动态障碍"
           />
           <div className={`timeline-control ${resultList.length ? "" : "disabled"}`}>
             <span>REPLAY</span>
@@ -590,51 +685,6 @@ export default function Home() {
           </div>
         </section>
 
-        <aside className="telemetry-panel panel">
-          <div className="panel-heading primary"><div><p>ALGORITHM DATA</p><h2>搜索状态</h2></div><i className="panel-signal" /></div>
-          {PLANNER_KEYS.map((key) => {
-            const result = results[key];
-            const visible = result ? Math.min(Math.floor(progress), result.steps.length) : 0;
-            const done = result && visible >= result.steps.length;
-            const currentStep = result ? visibleStep(result) : undefined;
-            const visibleGenerated = result
-              ? 1 + result.steps.slice(0, visible).reduce((total, step) => total + step.generated.length, 0)
-              : 0;
-            return (
-              <div key={key} className={`telemetry-card ${key}`}>
-                <div className="telemetry-title"><p>{NAMES[key]}</p><strong>{!enabled[key] ? "关闭" : !result ? "" : done ? result.found ? "已完成" : "无路径" : "计算中"}</strong></div>
-                <div className="algorithm-formula"><span>核心规则</span><b>{FORMULAS[key]}</b></div>
-                <small>{DESCRIPTIONS[key]}</small>
-                <dl>
-                  <div><dt>扩展</dt><dd>{visible}</dd></div>
-                  <div><dt>生成</dt><dd>{visibleGenerated}</dd></div>
-                  <div><dt>待选</dt><dd>{currentStep?.open ?? 0}</dd></div>
-                  <div><dt>已检</dt><dd>{currentStep?.closed ?? 0}</dd></div>
-                  <div><dt>耗时</dt><dd>{result ? `${result.durationMs.toFixed(1)}ms` : "—"}</dd></div>
-                  <div><dt>路径</dt><dd>{done && result?.found ? `${(result.pathLength * 0.25).toFixed(1)}m` : "—"}</dd></div>
-                </dl>
-              </div>
-            );
-          })}
-          <div className="event-log">
-            <div className="event-log-heading"><p>推演记录</p><small>“扩展”是当前检查的节点，“生成”是本步发现的候选节点</small></div>
-            {resultList.length === 0 ? (
-              <><span><b>地图</b> 障碍与代价数据已载入</span><span><b>操作</b> 设置起终点后启动路径规划</span><span><b>回放</b> 生成结果后可拖动时间轴</span></>
-            ) : resultList.map((result) => {
-              const step = visibleStep(result);
-              const done = Math.floor(progress) >= result.steps.length;
-              return (
-                <span key={result.key}>
-                  <b style={{ color: COLORS[result.key] }}>{NAMES[result.key]}</b>
-                  {done
-                    ? result.found ? `已找到路径，长度 ${(result.pathLength * 0.25).toFixed(1)}m` : "搜索结束，未找到路径"
-                    : step ? `正在检查 ${formatCell(step.pick)}，新增 ${step.generated.length} 个候选点` : "等待开始推演"}
-                </span>
-              );
-            })}
-            {executing && <span><b>机器人</b> 正在沿优先路径移动</span>}
-          </div>
-        </aside>
       </section>
     </main>
   );

@@ -44,6 +44,17 @@
             <input id="inflation" type="range" min="0.8" max="2.4" step="0.05" value="1.45" />
           </label>
 
+          <div class="section-label"><span>DYNAMIC</span><b id="dynamic-count">3 个动态障碍</b></div>
+          <div class="segmented dynamic-mode-control" id="dynamic-mode">
+            <button type="button" class="active" data-motion="regular">规则移动</button>
+            <button type="button" data-motion="random">随机移动</button>
+          </div>
+          <div class="dynamic-actions">
+            <button id="add-dynamic" type="button">添加障碍</button>
+            <button id="clear-dynamic" type="button">清空</button>
+            <button id="reset-dynamic" type="button">默认</button>
+          </div>
+
           <div class="section-label"><span>MISSION</span><b>拖拽任务点</b></div>
           <div class="point-readout">
             <button id="select-start" type="button" class="selected"><i class="start-swatch"></i> 起点 <b id="start-value">03,20</b></button>
@@ -52,12 +63,35 @@
           <p class="drag-hint">按住地图中的图标并拖到自由栅格</p>
           <button class="reset-button" id="reset-points" type="button">重置起终点</button>
 
-          <div class="section-label"><span>PLANNERS</span><b>算法选择</b></div>
-          <div class="algorithm-list">
-            <label class="planner-option astar"><input id="enable-astar" type="checkbox" checked /><i class="astar"></i>A* <small>f=g+h</small></label>
-            <label class="planner-option dijkstra"><input id="enable-dijkstra" type="checkbox" checked /><i class="dijkstra"></i>Dijkstra <small>g only</small></label>
-            <label class="planner-option rrt"><input id="enable-rrt" type="checkbox" checked /><i class="rrt"></i>RRT <small>sample</small></label>
-            <label class="planner-option rrtstar"><input id="enable-rrtstar" type="checkbox" checked /><i class="rrtstar"></i>RRT* <small>rewire</small></label>
+          <div class="section-label"><span>PLANNERS</span><b>算法与搜索状态</b></div>
+          <details class="planner-picker">
+            <summary>选择规划算法 <b id="planner-picker-count">4 / 4</b></summary>
+            <div class="algorithm-list">
+              <label class="planner-option astar"><input id="enable-astar" type="checkbox" checked /><i class="astar"></i>A* <small>f=g+h</small></label>
+              <label class="planner-option dijkstra"><input id="enable-dijkstra" type="checkbox" checked /><i class="dijkstra"></i>Dijkstra <small>g only</small></label>
+              <label class="planner-option rrt"><input id="enable-rrt" type="checkbox" checked /><i class="rrt"></i>RRT <small>sample</small></label>
+              <label class="planner-option rrtstar"><input id="enable-rrtstar" type="checkbox" checked /><i class="rrtstar"></i>RRT* <small>rewire</small></label>
+            </div>
+          </details>
+          <div class="planner-status-view">
+            <label class="status-selector">查看状态<select id="status-planner"><option value="astar">A*</option><option value="dijkstra">DIJKSTRA</option><option value="rrt">RRT</option><option value="rrtstar">RRT*</option></select></label>
+            <p class="empty-planner-status" id="empty-planner-status" hidden>请从上方下拉框勾选至少一种算法</p>
+            <div class="telemetry-card compact astar" data-card="astar">
+              <div class="telemetry-title"><p>A*</p><strong></strong></div><div class="algorithm-formula"><span>核心规则</span><b>f(n) = g(n) + h(n)</b></div>
+              <dl><div><dt>扩展</dt><dd data-pick>0</dd></div><div><dt>生成</dt><dd data-generated>0</dd></div><div><dt>待选</dt><dd data-open>0</dd></div><div><dt>已检</dt><dd data-closed>0</dd></div><div><dt>耗时</dt><dd data-time>—</dd></div><div><dt>路径</dt><dd data-path>—</dd></div></dl><p class="status-explanation" data-status-text>等待启动路径规划</p>
+            </div>
+            <div class="telemetry-card compact dijkstra" data-card="dijkstra" hidden>
+              <div class="telemetry-title"><p>DIJKSTRA</p><strong></strong></div><div class="algorithm-formula"><span>核心规则</span><b>priority = g(n)</b></div>
+              <dl><div><dt>扩展</dt><dd data-pick>0</dd></div><div><dt>生成</dt><dd data-generated>0</dd></div><div><dt>待选</dt><dd data-open>0</dd></div><div><dt>已检</dt><dd data-closed>0</dd></div><div><dt>耗时</dt><dd data-time>—</dd></div><div><dt>路径</dt><dd data-path>—</dd></div></dl><p class="status-explanation" data-status-text>等待启动路径规划</p>
+            </div>
+            <div class="telemetry-card compact rrt" data-card="rrt" hidden>
+              <div class="telemetry-title"><p>RRT</p><strong></strong></div><div class="algorithm-formula"><span>核心规则</span><b>qnew = STEER(qnear, qrand)</b></div>
+              <dl><div><dt>扩展</dt><dd data-pick>0</dd></div><div><dt>生成</dt><dd data-generated>0</dd></div><div><dt>待选</dt><dd data-open>0</dd></div><div><dt>已检</dt><dd data-closed>0</dd></div><div><dt>耗时</dt><dd data-time>—</dd></div><div><dt>路径</dt><dd data-path>—</dd></div></dl><p class="status-explanation" data-status-text>等待启动路径规划</p>
+            </div>
+            <div class="telemetry-card compact rrtstar" data-card="rrtstar" hidden>
+              <div class="telemetry-title"><p>RRT*</p><strong></strong></div><div class="algorithm-formula"><span>核心规则</span><b>Jnew = min(Jnear + c)</b></div>
+              <dl><div><dt>扩展</dt><dd data-pick>0</dd></div><div><dt>生成</dt><dd data-generated>0</dd></div><div><dt>待选</dt><dd data-open>0</dd></div><div><dt>已检</dt><dd data-closed>0</dd></div><div><dt>耗时</dt><dd data-time>—</dd></div><div><dt>路径</dt><dd data-path>—</dd></div></dl><p class="status-explanation" data-status-text>等待启动路径规划</p>
+            </div>
           </div>
 
           <label class="range-control speed-control">
@@ -73,7 +107,7 @@
             <div><span class="pulse"></span> PLANNING WORLD <i>/</i> <b id="layer-name">COST</b></div>
             <p id="run-state">DRAG MARKERS</p>
           </div>
-          <canvas id="map" width="840" height="576" aria-label="交互式路径规划地图，拖动起点箭头或终点旗帜设置位置"></canvas>
+          <canvas id="map" width="840" height="576" aria-label="交互式路径规划地图，可拖动起终点或点击放置动态障碍"></canvas>
           <div class="timeline-control disabled" id="timeline-control">
             <span>REPLAY</span>
             <div class="timeline-range"><i id="progress-bar"></i><input id="timeline-slider" type="range" min="0" max="1" step="1" value="0" disabled aria-label="拖动查看路径规划推演过程" /></div>
@@ -88,26 +122,6 @@
           </div>
         </section>
 
-        <aside class="telemetry-panel panel">
-          <div class="panel-heading primary"><div><p>ALGORITHM DATA</p><h2>搜索状态</h2></div><i class="panel-signal"></i></div>
-          <div class="telemetry-card astar" data-card="astar">
-            <div class="telemetry-title"><p>A*</p><strong></strong></div><div class="algorithm-formula"><span>核心规则</span><b>f(n) = g(n) + h(n)</b></div><small>f = g + h / 目标导向</small>
-            <dl><div><dt>扩展</dt><dd data-pick>0</dd></div><div><dt>生成</dt><dd data-generated>0</dd></div><div><dt>待选</dt><dd data-open>0</dd></div><div><dt>已检</dt><dd data-closed>0</dd></div><div><dt>耗时</dt><dd data-time>—</dd></div><div><dt>路径</dt><dd data-path>—</dd></div></dl>
-          </div>
-          <div class="telemetry-card dijkstra" data-card="dijkstra">
-            <div class="telemetry-title"><p>DIJKSTRA</p><strong></strong></div><div class="algorithm-formula"><span>核心规则</span><b>priority = g(n)</b></div><small>priority = g / 等代价扩展</small>
-            <dl><div><dt>扩展</dt><dd data-pick>0</dd></div><div><dt>生成</dt><dd data-generated>0</dd></div><div><dt>待选</dt><dd data-open>0</dd></div><div><dt>已检</dt><dd data-closed>0</dd></div><div><dt>耗时</dt><dd data-time>—</dd></div><div><dt>路径</dt><dd data-path>—</dd></div></dl>
-          </div>
-          <div class="telemetry-card rrt" data-card="rrt">
-            <div class="telemetry-title"><p>RRT</p><strong></strong></div><div class="algorithm-formula"><span>核心规则</span><b>qnew = STEER(qnear, qrand)</b></div><small>sample + steer / 树生长</small>
-            <dl><div><dt>扩展</dt><dd data-pick>0</dd></div><div><dt>生成</dt><dd data-generated>0</dd></div><div><dt>待选</dt><dd data-open>0</dd></div><div><dt>已检</dt><dd data-closed>0</dd></div><div><dt>耗时</dt><dd data-time>—</dd></div><div><dt>路径</dt><dd data-path>—</dd></div></dl>
-          </div>
-          <div class="telemetry-card rrtstar" data-card="rrtstar">
-            <div class="telemetry-title"><p>RRT*</p><strong></strong></div><div class="algorithm-formula"><span>核心规则</span><b>Jnew = min(Jnear + c)</b></div><small>choose parent + rewire / 渐近优化</small>
-            <dl><div><dt>扩展</dt><dd data-pick>0</dd></div><div><dt>生成</dt><dd data-generated>0</dd></div><div><dt>待选</dt><dd data-open>0</dd></div><div><dt>已检</dt><dd data-closed>0</dd></div><div><dt>耗时</dt><dd data-time>—</dd></div><div><dt>路径</dt><dd data-path>—</dd></div></dl>
-          </div>
-          <div class="event-log"><div class="event-log-heading"><p>推演记录</p><small>“扩展”是当前检查的节点，“生成”是本步发现的候选节点</small></div><div id="events"><span><b>地图</b> 障碍与代价数据已载入</span><span><b>操作</b> 设置起终点后启动路径规划</span><span><b>回放</b> 生成结果后可拖动时间轴</span></div></div>
-        </aside>
       </section>
     </main>
     <script src="./app.js"></script>

@@ -1,5 +1,7 @@
 export type Point = { x: number; y: number };
 export type PlannerKey = "astar" | "dijkstra" | "rrt" | "rrtstar";
+export type DynamicMotion = "regular" | "random";
+export type DynamicObstacleSeed = Point & { phase: number };
 
 export type SearchStep = {
   pick: Point;
@@ -67,15 +69,42 @@ export function configureGrid(cols: number, rows: number) {
 
 export const keyOf = (point: Point) => `${Math.round(point.x)},${Math.round(point.y)}`;
 
-export function dynamicObstaclesAt(timeMs: number): Point[] {
-  const t = timeMs / 1000;
+export function defaultDynamicObstacles(): DynamicObstacleSeed[] {
   const scaleX = COLS / BASE_COLS;
   const scaleY = ROWS / BASE_ROWS;
   return [
-    { x: (19 + Math.sin(t * 0.72) * 3.4) * scaleX, y: 14.7 * scaleY },
-    { x: 29.4 * scaleX, y: (5.7 + Math.sin(t * 0.58 + 1.4) * 3.1) * scaleY },
-    { x: (8.5 + Math.sin(t * 0.49 + 2.2) * 2.3) * scaleX, y: 19.2 * scaleY },
+    { x: 19 * scaleX, y: 14.7 * scaleY, phase: 0 },
+    { x: 29.4 * scaleX, y: 5.7 * scaleY, phase: 1.4 },
+    { x: 8.5 * scaleX, y: 19.2 * scaleY, phase: 2.2 },
   ];
+}
+
+export function dynamicObstaclesAt(
+  timeMs: number,
+  seeds: DynamicObstacleSeed[] = defaultDynamicObstacles(),
+  motion: DynamicMotion = "regular",
+): Point[] {
+  const t = timeMs / 1000;
+  return seeds.map((seed, index) => {
+    let offsetX = 0;
+    let offsetY = 0;
+    if (motion === "random") {
+      offsetX = Math.sin(t * (0.41 + index * 0.023) + seed.phase) * 2.1
+        + Math.sin(t * (0.77 + index * 0.017) + seed.phase * 1.9) * 0.9;
+      offsetY = Math.cos(t * (0.37 + index * 0.019) + seed.phase * 1.3) * 1.8
+        + Math.sin(t * (0.69 + index * 0.013) + seed.phase * 2.4) * 0.8;
+    } else if (index % 3 === 1) {
+      offsetY = Math.sin(t * 0.58 + seed.phase) * 3.1;
+    } else {
+      const speed = index % 3 === 0 ? 0.72 : 0.49;
+      const amplitude = index % 3 === 0 ? 3.4 : 2.3;
+      offsetX = Math.sin(t * speed + seed.phase) * amplitude;
+    }
+    return {
+      x: Math.max(2, Math.min(COLS - 3, seed.x + offsetX)),
+      y: Math.max(2, Math.min(ROWS - 3, seed.y + offsetY)),
+    };
+  });
 }
 
 function addRectCells(target: Set<string>, x: number, y: number, w: number, h: number) {

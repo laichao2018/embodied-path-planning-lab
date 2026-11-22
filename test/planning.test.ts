@@ -5,6 +5,7 @@ import {
   COLS,
   ROWS,
   configureGrid,
+  defaultDynamicObstacles,
   dynamicObstaclesAt,
   makeCostField,
   runPlanner,
@@ -39,6 +40,21 @@ test("cost map expands obstacle cells when inflation grows", () => {
 
   assert.ok(inflated.blocked.size > compact.blocked.size);
   assert.equal(inflated.raw.size, compact.raw.size);
+});
+
+test("dynamic obstacles support regular, random, and user-defined motion seeds", () => {
+  const defaults = defaultDynamicObstacles();
+  const regularStart = dynamicObstaclesAt(0, defaults, "regular");
+  const regularLater = dynamicObstaclesAt(2_000, defaults, "regular");
+  const randomLater = dynamicObstaclesAt(2_000, defaults, "random");
+
+  assert.notDeepEqual(regularLater, regularStart);
+  assert.notDeepEqual(randomLater, regularLater);
+
+  const custom = dynamicObstaclesAt(1_000, [{ x: 12, y: 10, phase: 0.6 }], "random");
+  assert.equal(custom.length, 1);
+  assert.ok(custom[0].x >= 2 && custom[0].x <= COLS - 3);
+  assert.ok(custom[0].y >= 2 && custom[0].y <= ROWS - 3);
 });
 
 for (const [scenarioIndex, scenario] of scenarios.entries()) {

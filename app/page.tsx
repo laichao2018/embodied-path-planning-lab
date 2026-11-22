@@ -368,23 +368,21 @@ export default function Home() {
     <main className="lab-page">
       <header className="topbar">
         <div className="brand-lockup">
-          <span className="brand-mark">06</span>
-          <div><p>具身智能 · 路径规划</p><strong>PATH LAB</strong></div>
+          <span className="brand-mark">NS</span>
+          <div><strong>NAV STUDIO</strong><p>ROBOT PATH PLANNING WORKSPACE</p></div>
         </div>
-        <div className="status-strip"><span className="live-dot" /> 仿真环境在线 <b>20 Hz</b></div>
+        <div className="workspace-stats">
+          <span>GRID <b>35 × 24</b></span>
+          <span>PLANNERS <b>03</b></span>
+          <span>OBSTACLES <b>LIVE</b></span>
+        </div>
+        <div className="status-strip"><span className="live-dot" /> SIMULATION <b>20 Hz</b></div>
       </header>
-
-      <section className="hero-copy">
-        <div>
-          <p className="eyebrow">GLOBAL SEARCH / LOCAL REACTION</p>
-          <h1>让搜索过程，<em>看得见。</em></h1>
-        </div>
-        <p>从障碍膨胀到代价传播，再到 Open Set 的生成与 Pick。动态障碍持续运动，路径颜色对应不同规划器。</p>
-      </section>
 
       <section className="lab-grid">
         <aside className="control-panel panel">
-          <div className="panel-heading"><span>01</span><div><p>MAP LAYER</p><h2>地图图层</h2></div></div>
+          <div className="panel-heading primary"><div><p>CONTROL DECK</p><h2>规划控制</h2></div><i className="panel-signal" /></div>
+          <div className="section-label"><span>MAP MODEL</span><b>地图模型</b></div>
           <div className="segmented">
             {(["raw", "inflation", "cost"] as Layer[]).map((item) => (
               <button key={item} type="button" aria-pressed={layer === item} className={layer === item ? "active" : ""} onClick={() => setLayer(item)}>
@@ -398,14 +396,14 @@ export default function Home() {
             <input type="range" min="0.8" max="2.4" step="0.05" value={inflation} onChange={(event) => { clearRun(); setInflation(Number(event.target.value)); }} />
           </label>
 
-          <div className="panel-heading compact"><span>02</span><div><p>MISSION POINTS</p><h2>任务点</h2></div></div>
+          <div className="section-label"><span>MISSION</span><b>起点与目标</b></div>
           <div className="point-readout">
             <button type="button" className={placement === "start" ? "selected" : ""} onClick={() => setPlacement("start")}><i className="start-swatch" /> 起点 <b>{formatCell(start)}</b></button>
             <button type="button" className={placement === "goal" ? "selected" : ""} onClick={() => setPlacement("goal")}><i className="goal-swatch" /> 终点 <b>{formatCell(goal)}</b></button>
           </div>
           <button className="reset-button" type="button" onClick={resetPoints}>重置起终点</button>
 
-          <div className="panel-heading compact"><span>03</span><div><p>ALGORITHMS</p><h2>规划器</h2></div></div>
+          <div className="section-label"><span>PLANNERS</span><b>算法选择</b></div>
           <div className="algorithm-list">
             {(["astar", "dijkstra", "rrt"] as PlannerKey[]).map((key) => (
               <label key={key}>
@@ -427,7 +425,7 @@ export default function Home() {
 
         <section className="map-panel panel">
           <div className="map-toolbar">
-            <div><span className="pulse" /> WORLD_01 / {layer.toUpperCase()}</div>
+            <div><span className="pulse" /> PLANNING WORLD <i>/</i> {layer.toUpperCase()}</div>
             <p className={running ? "is-running" : ""}>{running ? `SEARCH ${Math.round((progress / Math.max(maxSteps, 1)) * 100)}%` : executing ? "ROBOT EXECUTING" : placement === "start" ? "SET START" : "SET GOAL"}</p>
           </div>
           <canvas ref={canvasRef} width={CANVAS_WIDTH} height={CANVAS_HEIGHT} onClick={placePoint} aria-label="交互式路径规划地图，单击放置起点和终点" />
@@ -442,7 +440,7 @@ export default function Home() {
         </section>
 
         <aside className="telemetry-panel panel">
-          <div className="panel-heading"><span>04</span><div><p>SEARCH TELEMETRY</p><h2>搜索遥测</h2></div></div>
+          <div className="panel-heading primary"><div><p>LIVE METRICS</p><h2>搜索状态</h2></div><i className="panel-signal" /></div>
           {(["astar", "dijkstra", "rrt"] as PlannerKey[]).map((key) => {
             const result = results[key];
             const visible = result ? Math.min(Math.floor(progress), result.steps.length) : 0;
@@ -475,13 +473,6 @@ export default function Home() {
             {executing && <span><b>BOT</b> 局部闭环跟踪中</span>}
           </div>
         </aside>
-      </section>
-
-      <section className="method-strip">
-        <article><span>01</span><div><h3>GENERATE</h3><p>扩展可达邻居 / 随机采样</p></div></article>
-        <article><span>02</span><div><h3>PICK</h3><p>按 g、f 或最近邻选择</p></div></article>
-        <article><span>03</span><div><h3>CHECK</h3><p>碰撞检测与代价查询</p></div></article>
-        <article><span>04</span><div><h3>EXECUTE</h3><p>局部闭环持续响应动态障碍</p></div></article>
       </section>
     </main>
   );

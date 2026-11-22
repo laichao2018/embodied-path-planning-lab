@@ -3,17 +3,17 @@ import "./globals.css";
 
 export const metadata: Metadata = {
   metadataBase: new URL("https://embodied-path-planning-lab.promisingcypress10.chatgpt.site"),
-  title: "Path Lab 06 | 具身智能路径规划演示",
-  description: "交互式演示 A*、Dijkstra 与 RRT 的搜索、障碍膨胀和代价地图。",
+  title: "NAV STUDIO | 路径规划工作台",
+  description: "全屏交互式 A*、Dijkstra 与 RRT 路径规划工作台。",
   openGraph: {
-    title: "PATH LAB 06 | 具身智能路径规划演示",
-    description: "看见 A*、Dijkstra 与 RRT 的 GENERATE、PICK、障碍膨胀和代价传播。",
-    images: [{ url: "/og.png", width: 1734, height: 907, alt: "PATH LAB 06 具身智能路径规划演示" }],
+    title: "NAV STUDIO | 路径规划工作台",
+    description: "在一个全屏工作台中观察 A*、Dijkstra 与 RRT 的搜索、障碍膨胀和路径生成。",
+    images: [{ url: "/og.png", width: 1733, height: 907, alt: "NAV STUDIO 路径规划工作台" }],
   },
   twitter: {
     card: "summary_large_image",
-    title: "PATH LAB 06 | 具身智能路径规划演示",
-    description: "交互式路径规划算法可视化实验室。",
+    title: "NAV STUDIO | 路径规划工作台",
+    description: "全屏交互式路径规划算法工作台。",
     images: ["/og.png"],
   },
 };

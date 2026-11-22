@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="dark" />
+    <title>PATH LAB 06｜离线路径规划演示</title>
+    <meta name="description" content="无需安装依赖的 A*、Dijkstra 与 RRT 离线路径规划演示。" />
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <main class="lab-page">
+      <header class="topbar">
+        <div class="brand-lockup">
+          <span class="brand-mark">06</span>
+          <div><p>具身智能 · 路径规划</p><strong>PATH LAB</strong></div>
+        </div>
+        <div class="status-strip"><span class="live-dot"></span> 离线模式 <b>零依赖</b></div>
+      </header>
+
+      <section class="hero-copy">
+        <div>
+          <p class="eyebrow">GLOBAL SEARCH / LOCAL REACTION</p>
+          <h1>让搜索过程，<em>看得见。</em></h1>
+        </div>
+        <p>本页面完全在浏览器本地运行。观察障碍膨胀、代价传播、GENERATE、PICK 与机器人路径执行。</p>
+      </section>
+
+      <section class="lab-grid">
+        <aside class="control-panel panel">
+          <div class="panel-heading"><span>01</span><div><p>MAP LAYER</p><h2>地图图层</h2></div></div>
+          <div class="segmented" id="layer-controls">
+            <button type="button" data-layer="raw">原始</button>
+            <button type="button" data-layer="inflation">膨胀</button>
+            <button type="button" data-layer="cost" class="active">代价</button>
+          </div>
+
+          <label class="range-control">
+            <span>膨胀半径 <b id="inflation-value">1.45 cell</b></span>
+            <input id="inflation" type="range" min="0.8" max="2.4" step="0.05" value="1.45" />
+          </label>
+
+          <div class="panel-heading compact"><span>02</span><div><p>MISSION POINTS</p><h2>任务点</h2></div></div>
+          <div class="point-readout">
+            <button id="select-start" type="button" class="selected"><i class="start-swatch"></i> 起点 <b id="start-value">03,20</b></button>
+            <button id="select-goal" type="button"><i class="goal-swatch"></i> 终点 <b id="goal-value">32,03</b></button>
+          </div>
+          <button class="reset-button" id="reset-points" type="button">重置起终点</button>
+
+          <div class="panel-heading compact"><span>03</span><div><p>ALGORITHMS</p><h2>规划器</h2></div></div>
+          <div class="algorithm-list">
+            <label><input id="enable-astar" type="checkbox" checked /><i class="astar"></i>A* <small>f=g+h</small></label>
+            <label><input id="enable-dijkstra" type="checkbox" checked /><i class="dijkstra"></i>Dijkstra <small>g only</small></label>
+            <label><input id="enable-rrt" type="checkbox" checked /><i class="rrt"></i>RRT <small>sample</small></label>
+          </div>
+
+          <label class="range-control speed-control">
+            <span>推演速度 <b id="speed-value">4×</b></span>
+            <input id="speed" type="range" min="1" max="10" step="1" value="4" />
+          </label>
+
+          <button class="run-button" id="run-planner" type="button">启动路径规划 <span>→</span></button>
+        </aside>
+
+        <section class="map-panel panel">
+          <div class="map-toolbar">
+            <div><span class="pulse"></span> WORLD_01 / <b id="layer-name">COST</b></div>
+            <p id="run-state">SET START</p>
+          </div>
+          <canvas id="map" width="840" height="576" aria-label="交互式路径规划地图"></canvas>
+          <div class="progress-rail"><span id="progress-bar"></span></div>
+          <div class="map-legend">
+            <span><i class="wall"></i>边界 / 静态障碍</span>
+            <span><i class="dynamic"></i>动态障碍</span>
+            <span><i class="inflated"></i>膨胀与代价</span>
+            <span><i class="pick-ring"></i>当前 PICK</span>
+            <span class="legend-note" id="notice">单击地图依次设置起点与终点</span>
+          </div>
+        </section>
+
+        <aside class="telemetry-panel panel">
+          <div class="panel-heading"><span>04</span><div><p>SEARCH TELEMETRY</p><h2>搜索遥测</h2></div></div>
+          <div class="telemetry-card astar" data-card="astar">
+            <div class="telemetry-title"><p>A*</p><span></span></div><strong>READY</strong><small>f = g + h / 目标导向</small>
+            <dl><div><dt>PICK</dt><dd data-pick>0</dd></div><div><dt>PATH</dt><dd data-path>—</dd></div></dl>
+          </div>
+          <div class="telemetry-card dijkstra" data-card="dijkstra">
+            <div class="telemetry-title"><p>DIJKSTRA</p><span></span></div><strong>READY</strong><small>priority = g / 等代价扩展</small>
+            <dl><div><dt>PICK</dt><dd data-pick>0</dd></div><div><dt>PATH</dt><dd data-path>—</dd></div></dl>
+          </div>
+          <div class="telemetry-card rrt" data-card="rrt">
+            <div class="telemetry-title"><p>RRT</p><span></span></div><strong>READY</strong><small>sample + steer / 树生长</small>
+            <dl><div><dt>PICK</dt><dd data-pick>0</dd></div><div><dt>PATH</dt><dd data-path>—</dd></div></dl>
+          </div>
+          <div class="event-log"><p>EVENT STREAM</p><div id="events"><span><b>00</b> 等待规划任务</span><span><b>01</b> 代价地图已就绪</span><span><b>02</b> 动态感知运行中</span></div></div>
+        </aside>
+      </section>
+
+      <section class="method-strip">
+        <article><span>01</span><div><h3>GENERATE</h3><p>扩展可达邻居 / 随机采样</p></div></article>
+        <article><span>02</span><div><h3>PICK</h3><p>按 g、f 或最近邻选择</p></div></article>
+        <article><span>03</span><div><h3>CHECK</h3><p>碰撞检测与代价查询</p></div></article>
+        <article><span>04</span><div><h3>EXECUTE</h3><p>局部闭环持续响应动态障碍</p></div></article>
+      </section>
+    </main>
+    <script src="./app.js"></script>
+  </body>
+</html>

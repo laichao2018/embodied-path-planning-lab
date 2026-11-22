@@ -19,14 +19,35 @@
 - **DWA**：动态障碍与局部代价地图持续更新，强调“生成 - 预测 - 筛选 - 评分 - 执行”的滚动闭环。
 - **TEB**：作为工程延伸，强调路径形状与时间分配的联合优化；当前 Demo 聚焦全局搜索与局部反应的可视化。
 
-## 本地运行
+## 零依赖启动（推荐）
+
+```bash
+cd /Users/laichao/workspace/embodied-path-planning-lab
+sh start.sh
+```
+
+`start.sh` 会直接用系统浏览器打开离线 Demo。运行过程不需要联网，也不需要安装 Node.js、npm、Python 或任何第三方软件包。
+
+克隆 GitHub 项目后也可以直接启动：
+
+```bash
+git clone https://github.com/laichao2018/embodied-path-planning-lab.git
+cd embodied-path-planning-lab
+sh start.sh
+```
+
+离线程序位于 `standalone/`，只使用浏览器原生的 HTML、CSS、JavaScript 和 Canvas API。
+
+## 开发模式（可选）
+
+如需修改 React / TypeScript 开发版，再使用 Node.js：
 
 ```bash
 npm install
 npm run dev
 ```
 
-打开终端提示的本地地址。生产构建：
+生产构建：
 
 ```bash
 npm run build
@@ -53,7 +74,7 @@ npm run verify
 
 ## 技术栈
 
-- React 19 + TypeScript
-- Vinext / Vite
-- Canvas 2D 自绘地图与算法动画
-- Cloudflare Workers 兼容构建
+- 零依赖离线版：原生 HTML + CSS + JavaScript + Canvas 2D
+- 开发版：React 19 + TypeScript + Vinext / Vite
+- Canvas 2D 自绘地图、搜索过程与机器人执行动画
+- Cloudflare Workers 兼容构建（可选）

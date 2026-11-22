@@ -38,6 +38,12 @@ const DESCRIPTIONS: Record<PlannerKey, string> = {
   rrt: "sample + steer / 树生长",
 };
 
+const FORMULAS: Record<PlannerKey, string> = {
+  astar: "f(n) = g(n) + h(n)",
+  dijkstra: "priority = g(n)",
+  rrt: "qnew = STEER(qnear, qrand)",
+};
+
 const DEFAULT_START = { x: 3, y: 20 };
 const DEFAULT_GOAL = { x: 32, y: 3 };
 
@@ -424,6 +430,15 @@ export default function Home() {
     setNotice(`${label}已更新，可以启动路径规划`);
   };
 
+  const seekProgress = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const next = Number(event.target.value);
+    setRunning(false);
+    setExecuting(false);
+    setExecutionCursor(0);
+    setProgress(next);
+    setNotice(`已定位到推演过程 ${Math.round((next / Math.max(maxSteps, 1)) * 100)}%`);
+  };
+
   const resetPoints = () => {
     clearRun();
     setStart(DEFAULT_START);
@@ -511,7 +526,23 @@ export default function Home() {
             onPointerCancel={endMarkerDrag}
             aria-label="交互式路径规划地图，拖动起点箭头或终点旗帜设置位置"
           />
-          <div className="progress-rail"><span style={{ width: `${Math.min(100, (progress / Math.max(maxSteps, 1)) * 100)}%` }} /></div>
+          <div className={`timeline-control ${resultList.length ? "" : "disabled"}`}>
+            <span>REPLAY</span>
+            <div className="timeline-range">
+              <i style={{ width: `${Math.min(100, (progress / Math.max(maxSteps, 1)) * 100)}%` }} />
+              <input
+                type="range"
+                min="0"
+                max={Math.max(maxSteps, 1)}
+                step="1"
+                value={Math.min(progress, Math.max(maxSteps, 1))}
+                disabled={!resultList.length}
+                onChange={seekProgress}
+                aria-label="拖动查看路径规划推演过程"
+              />
+            </div>
+            <b>{Math.round((progress / Math.max(maxSteps, 1)) * 100)}%</b>
+          </div>
           <div className="map-legend">
             <span><i className="wall" />边界 / 静态障碍</span>
             <span><i className="dynamic" />动态障碍</span>
@@ -533,8 +564,8 @@ export default function Home() {
               : 0;
             return (
               <div key={key} className={`telemetry-card ${key}`}>
-                <div className="telemetry-title"><p>{NAMES[key]}</p><span style={{ background: COLORS[key] }} /></div>
-                <strong>{!enabled[key] ? "OFF" : !result ? "" : done ? result.found ? "PATH" : "FAIL" : "SEARCH"}</strong>
+                <div className="telemetry-title"><p>{NAMES[key]}</p><strong>{!enabled[key] ? "OFF" : !result ? "" : done ? result.found ? "PATH" : "FAIL" : "SEARCH"}</strong></div>
+                <div className="algorithm-formula"><span>PARAM</span><b>{FORMULAS[key]}</b></div>
                 <small>{DESCRIPTIONS[key]}</small>
                 <dl>
                   <div><dt>PICK</dt><dd>{visible}</dd></div>

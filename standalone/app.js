@@ -40,6 +40,9 @@
     speedValue: document.getElementById("speed-value"),
     runPlanner: document.getElementById("run-planner"),
     runState: document.getElementById("run-state"),
+    timelineControl: document.getElementById("timeline-control"),
+    timelineSlider: document.getElementById("timeline-slider"),
+    timelineValue: document.getElementById("timeline-value"),
     progressBar: document.getElementById("progress-bar"),
     notice: document.getElementById("notice"),
     events: document.getElementById("events"),
@@ -375,6 +378,11 @@
     const stepsTotal = maxSteps();
     const percent = stepsTotal ? Math.min(100, state.progress / stepsTotal * 100) : 0;
     elements.progressBar.style.width = `${percent}%`;
+    elements.timelineControl.classList.toggle("disabled", !resultList().length);
+    elements.timelineSlider.disabled = !resultList().length;
+    elements.timelineSlider.max = String(Math.max(stepsTotal, 1));
+    elements.timelineSlider.value = String(Math.min(state.progress, Math.max(stepsTotal, 1)));
+    elements.timelineValue.textContent = `${Math.round(percent)}%`;
     elements.runState.classList.toggle("is-running", state.running);
     if (state.running) elements.runState.textContent = `SEARCH ${Math.round(percent)}%`;
     else if (state.executing) elements.runState.textContent = "ROBOT EXECUTING";
@@ -774,6 +782,15 @@
   elements.speed.addEventListener("input", (event) => {
     state.speed = Number(event.target.value);
     updateInterface();
+  });
+  elements.timelineSlider.addEventListener("input", (event) => {
+    state.running = false;
+    state.executing = false;
+    state.executionCursor = 0;
+    state.progress = Number(event.target.value);
+    const percent = Math.round(state.progress / Math.max(maxSteps(), 1) * 100);
+    setNotice(`已定位到推演过程 ${percent}%`);
+    updateTelemetry();
   });
   elements.runPlanner.addEventListener("click", startPlanning);
   canvas.addEventListener("pointerdown", beginMarkerDrag);

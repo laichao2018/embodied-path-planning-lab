@@ -16,10 +16,10 @@
     { x: 4, y: 14, w: 5, h: 2 },
   ];
   const COLORS = {
-    astar: "#43d9ff",
-    dijkstra: "#ffb85b",
-    rrt: "#ff5d8e",
-    rrtstar: "#a78bfa",
+    astar: "#00bfff",
+    dijkstra: "#ffd400",
+    rrt: "#ff4b4b",
+    rrtstar: "#a970ff",
   };
   const NAMES = { astar: "A*", dijkstra: "DIJKSTRA", rrt: "RRT", rrtstar: "RRT*" };
   const DEFAULT_START = { x: 3, y: 20 };
@@ -534,12 +534,12 @@
         ? 1 + result.steps.slice(0, visible).reduce((total, step) => total + step.generated.length, 0)
         : 0;
       card.querySelector("strong").textContent = !state.enabled[planner]
-        ? "OFF"
+        ? "关闭"
         : !result
           ? ""
           : done
-            ? result.found ? "PATH" : "FAIL"
-            : "SEARCH";
+            ? result.found ? "已完成" : "无路径"
+            : "计算中";
       card.querySelector("[data-pick]").textContent = String(visible);
       card.querySelector("[data-generated]").textContent = String(visibleGenerated);
       card.querySelector("[data-open]").textContent = String(currentStep ? currentStep.open : 0);
@@ -551,15 +551,18 @@
     });
 
     if (!hasResults) {
-      elements.events.innerHTML = "<span><b>00</b> 等待规划任务</span><span><b>01</b> 代价地图已就绪</span><span><b>02</b> 动态感知运行中</span>";
+      elements.events.innerHTML = "<span><b>地图</b> 障碍与代价数据已载入</span><span><b>操作</b> 设置起终点后启动路径规划</span><span><b>回放</b> 生成结果后可拖动时间轴</span>";
       return;
     }
     elements.events.innerHTML = resultList().map((result) => {
       const index = Math.min(Math.floor(state.progress), result.steps.length) - 1;
       const step = result.steps[index];
-      const message = step ? `PICK ${formatCell(step.pick)} → GEN ${step.generated.length}` : "初始化 OPEN SET";
+      const done = Math.floor(state.progress) >= result.steps.length;
+      const message = done
+        ? result.found ? `已找到路径，长度 ${(result.pathLength * 0.25).toFixed(1)}m` : "搜索结束，未找到路径"
+        : step ? `正在检查 ${formatCell(step.pick)}，新增 ${step.generated.length} 个候选点` : "等待开始推演";
       return `<span><b style="color:${COLORS[result.key]}">${NAMES[result.key]}</b> ${message}</span>`;
-    }).join("") + (state.executing ? "<span><b>BOT</b> 局部闭环跟踪中</span>" : "");
+    }).join("") + (state.executing ? "<span><b>机器人</b> 正在沿优先路径移动</span>" : "");
   }
 
   function startPlanning() {
@@ -588,7 +591,7 @@
     state.executionCursor = 0;
     state.executing = false;
     state.running = true;
-    setNotice("推演中：亮环表示 PICK，微光节点表示 GENERATE");
+    setNotice("推演中：亮环表示当前扩展节点，微光点表示本步新生成节点");
     updateTelemetry();
   }
 
@@ -667,8 +670,6 @@
       ctx.arc(0, 0, 20 + Math.sin(now / 90) * 2, 0, Math.PI * 2);
       ctx.stroke();
     }
-    ctx.shadowColor = color;
-    ctx.shadowBlur = active ? 18 : 10;
     ctx.beginPath();
     ctx.fillStyle = "#071116";
     ctx.strokeStyle = color;
@@ -676,7 +677,6 @@
     ctx.arc(0, 0, 14, 0, Math.PI * 2);
     ctx.fill();
     ctx.stroke();
-    ctx.shadowBlur = 0;
     ctx.fillStyle = color;
     ctx.strokeStyle = color;
     if (kind === "start") {
@@ -762,17 +762,17 @@
       const pixel = pointToCanvas(point);
       if (state.layer !== "raw") {
         ctx.beginPath();
-        ctx.fillStyle = "rgba(255, 93, 142, .12)";
+        ctx.fillStyle = "rgba(255, 92, 92, .11)";
         ctx.arc(pixel.x, pixel.y, (state.inflation + 1) * CELL, 0, Math.PI * 2);
         ctx.fill();
-        ctx.strokeStyle = "rgba(255, 93, 142, .28)";
+        ctx.strokeStyle = "rgba(255, 92, 92, .32)";
         ctx.stroke();
       }
       ctx.beginPath();
-      ctx.fillStyle = "#ff5d8e";
+      ctx.fillStyle = "#f4f7f8";
       ctx.arc(pixel.x, pixel.y, 13, 0, Math.PI * 2);
       ctx.fill();
-      ctx.fillStyle = "#1d0810";
+      ctx.fillStyle = "#172026";
       ctx.font = "700 9px ui-monospace, monospace";
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
@@ -849,7 +849,7 @@
     ctx.lineWidth = 2;
     ctx.fillRect(-11, -8, 22, 16);
     ctx.strokeRect(-11, -8, 22, 16);
-    ctx.fillStyle = "#43d9ff";
+    ctx.fillStyle = "#00bfff";
     ctx.beginPath();
     ctx.moveTo(13, 0);
     ctx.lineTo(5, -5);
@@ -863,8 +863,8 @@
     ctx.fillRect(3, 7, 5, 4);
     ctx.restore();
 
-    drawMarker(state.start, "#7df8cf", "start", now);
-    drawMarker(state.goal, "#ffb85b", "goal", now);
+    drawMarker(state.start, "#2ed47a", "start", now);
+    drawMarker(state.goal, "#ff9f43", "goal", now);
   }
 
   elements.layerControls.addEventListener("click", (event) => {

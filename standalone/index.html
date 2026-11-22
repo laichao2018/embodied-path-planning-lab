@@ -48,10 +48,10 @@
 
           <div class="section-label"><span>PLANNERS</span><b>算法选择</b></div>
           <div class="algorithm-list">
-            <label><input id="enable-astar" type="checkbox" checked /><i class="astar"></i>A* <small>f=g+h</small></label>
-            <label><input id="enable-dijkstra" type="checkbox" checked /><i class="dijkstra"></i>Dijkstra <small>g only</small></label>
-            <label><input id="enable-rrt" type="checkbox" checked /><i class="rrt"></i>RRT <small>sample</small></label>
-            <label><input id="enable-rrtstar" type="checkbox" checked /><i class="rrtstar"></i>RRT* <small>rewire</small></label>
+            <label class="planner-option astar"><input id="enable-astar" type="checkbox" checked /><i class="astar"></i>A* <small>f=g+h</small></label>
+            <label class="planner-option dijkstra"><input id="enable-dijkstra" type="checkbox" checked /><i class="dijkstra"></i>Dijkstra <small>g only</small></label>
+            <label class="planner-option rrt"><input id="enable-rrt" type="checkbox" checked /><i class="rrt"></i>RRT <small>sample</small></label>
+            <label class="planner-option rrtstar"><input id="enable-rrtstar" type="checkbox" checked /><i class="rrtstar"></i>RRT* <small>rewire</small></label>
           </div>
 
           <label class="range-control speed-control">
@@ -77,30 +77,30 @@
             <span><i class="wall"></i>边界 / 静态障碍</span>
             <span><i class="dynamic"></i>动态障碍</span>
             <span><i class="inflated"></i>膨胀与代价</span>
-            <span><i class="pick-ring"></i>当前 PICK</span>
+            <span><i class="pick-ring"></i>当前扩展节点</span>
             <span class="legend-note" id="notice">拖动地图上的起点或终点图标设置位置</span>
           </div>
         </section>
 
         <aside class="telemetry-panel panel">
-          <div class="panel-heading primary"><div><p>LIVE METRICS</p><h2>搜索状态</h2></div><i class="panel-signal"></i></div>
+          <div class="panel-heading primary"><div><p>ALGORITHM DATA</p><h2>搜索状态</h2></div><i class="panel-signal"></i></div>
           <div class="telemetry-card astar" data-card="astar">
-            <div class="telemetry-title"><p>A*</p><strong></strong></div><div class="algorithm-formula"><span>PARAM</span><b>f(n) = g(n) + h(n)</b></div><small>f = g + h / 目标导向</small>
-            <dl><div><dt>PICK</dt><dd data-pick>0</dd></div><div><dt>GENERATE</dt><dd data-generated>0</dd></div><div><dt>OPEN</dt><dd data-open>0</dd></div><div><dt>CLOSED</dt><dd data-closed>0</dd></div><div><dt>TIME</dt><dd data-time>—</dd></div><div><dt>PATH</dt><dd data-path>—</dd></div></dl>
+            <div class="telemetry-title"><p>A*</p><strong></strong></div><div class="algorithm-formula"><span>核心规则</span><b>f(n) = g(n) + h(n)</b></div><small>f = g + h / 目标导向</small>
+            <dl><div><dt>扩展</dt><dd data-pick>0</dd></div><div><dt>生成</dt><dd data-generated>0</dd></div><div><dt>待选</dt><dd data-open>0</dd></div><div><dt>已检</dt><dd data-closed>0</dd></div><div><dt>耗时</dt><dd data-time>—</dd></div><div><dt>路径</dt><dd data-path>—</dd></div></dl>
           </div>
           <div class="telemetry-card dijkstra" data-card="dijkstra">
-            <div class="telemetry-title"><p>DIJKSTRA</p><strong></strong></div><div class="algorithm-formula"><span>PARAM</span><b>priority = g(n)</b></div><small>priority = g / 等代价扩展</small>
-            <dl><div><dt>PICK</dt><dd data-pick>0</dd></div><div><dt>GENERATE</dt><dd data-generated>0</dd></div><div><dt>OPEN</dt><dd data-open>0</dd></div><div><dt>CLOSED</dt><dd data-closed>0</dd></div><div><dt>TIME</dt><dd data-time>—</dd></div><div><dt>PATH</dt><dd data-path>—</dd></div></dl>
+            <div class="telemetry-title"><p>DIJKSTRA</p><strong></strong></div><div class="algorithm-formula"><span>核心规则</span><b>priority = g(n)</b></div><small>priority = g / 等代价扩展</small>
+            <dl><div><dt>扩展</dt><dd data-pick>0</dd></div><div><dt>生成</dt><dd data-generated>0</dd></div><div><dt>待选</dt><dd data-open>0</dd></div><div><dt>已检</dt><dd data-closed>0</dd></div><div><dt>耗时</dt><dd data-time>—</dd></div><div><dt>路径</dt><dd data-path>—</dd></div></dl>
           </div>
           <div class="telemetry-card rrt" data-card="rrt">
-            <div class="telemetry-title"><p>RRT</p><strong></strong></div><div class="algorithm-formula"><span>PARAM</span><b>qnew = STEER(qnear, qrand)</b></div><small>sample + steer / 树生长</small>
-            <dl><div><dt>PICK</dt><dd data-pick>0</dd></div><div><dt>GENERATE</dt><dd data-generated>0</dd></div><div><dt>OPEN</dt><dd data-open>0</dd></div><div><dt>CLOSED</dt><dd data-closed>0</dd></div><div><dt>TIME</dt><dd data-time>—</dd></div><div><dt>PATH</dt><dd data-path>—</dd></div></dl>
+            <div class="telemetry-title"><p>RRT</p><strong></strong></div><div class="algorithm-formula"><span>核心规则</span><b>qnew = STEER(qnear, qrand)</b></div><small>sample + steer / 树生长</small>
+            <dl><div><dt>扩展</dt><dd data-pick>0</dd></div><div><dt>生成</dt><dd data-generated>0</dd></div><div><dt>待选</dt><dd data-open>0</dd></div><div><dt>已检</dt><dd data-closed>0</dd></div><div><dt>耗时</dt><dd data-time>—</dd></div><div><dt>路径</dt><dd data-path>—</dd></div></dl>
           </div>
           <div class="telemetry-card rrtstar" data-card="rrtstar">
-            <div class="telemetry-title"><p>RRT*</p><strong></strong></div><div class="algorithm-formula"><span>PARAM</span><b>Jnew = min(Jnear + c)</b></div><small>choose parent + rewire / 渐近优化</small>
-            <dl><div><dt>PICK</dt><dd data-pick>0</dd></div><div><dt>GENERATE</dt><dd data-generated>0</dd></div><div><dt>OPEN</dt><dd data-open>0</dd></div><div><dt>CLOSED</dt><dd data-closed>0</dd></div><div><dt>TIME</dt><dd data-time>—</dd></div><div><dt>PATH</dt><dd data-path>—</dd></div></dl>
+            <div class="telemetry-title"><p>RRT*</p><strong></strong></div><div class="algorithm-formula"><span>核心规则</span><b>Jnew = min(Jnear + c)</b></div><small>choose parent + rewire / 渐近优化</small>
+            <dl><div><dt>扩展</dt><dd data-pick>0</dd></div><div><dt>生成</dt><dd data-generated>0</dd></div><div><dt>待选</dt><dd data-open>0</dd></div><div><dt>已检</dt><dd data-closed>0</dd></div><div><dt>耗时</dt><dd data-time>—</dd></div><div><dt>路径</dt><dd data-path>—</dd></div></dl>
           </div>
-          <div class="event-log"><p>EVENT STREAM</p><div id="events"><span><b>00</b> 等待规划任务</span><span><b>01</b> 代价地图已就绪</span><span><b>02</b> 动态感知运行中</span></div></div>
+          <div class="event-log"><div class="event-log-heading"><p>推演记录</p><small>“扩展”是当前检查的节点，“生成”是本步发现的候选节点</small></div><div id="events"><span><b>地图</b> 障碍与代价数据已载入</span><span><b>操作</b> 设置起终点后启动路径规划</span><span><b>回放</b> 生成结果后可拖动时间轴</span></div></div>
         </aside>
       </section>
     </main>

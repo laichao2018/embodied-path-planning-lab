@@ -22,10 +22,10 @@ type Results = Partial<Record<PlannerKey, PlannerResult>>;
 const PLANNER_KEYS: PlannerKey[] = ["astar", "dijkstra", "rrt", "rrtstar"];
 
 const COLORS: Record<PlannerKey, string> = {
-  astar: "#43d9ff",
-  dijkstra: "#ffb85b",
-  rrt: "#ff5d8e",
-  rrtstar: "#a78bfa",
+  astar: "#00bfff",
+  dijkstra: "#ffd400",
+  rrt: "#ff4b4b",
+  rrtstar: "#a970ff",
 };
 
 const NAMES: Record<PlannerKey, string> = {
@@ -201,17 +201,17 @@ export default function Home() {
         const pixel = pointToCanvas(point);
         if (layer !== "raw") {
           ctx.beginPath();
-          ctx.fillStyle = "rgba(255, 93, 142, .12)";
+          ctx.fillStyle = "rgba(255, 92, 92, .11)";
           ctx.arc(pixel.x, pixel.y, (inflation + 1) * CELL, 0, Math.PI * 2);
           ctx.fill();
-          ctx.strokeStyle = "rgba(255, 93, 142, .28)";
+          ctx.strokeStyle = "rgba(255, 92, 92, .32)";
           ctx.stroke();
         }
         ctx.beginPath();
-        ctx.fillStyle = "#ff5d8e";
+        ctx.fillStyle = "#f4f7f8";
         ctx.arc(pixel.x, pixel.y, 13, 0, Math.PI * 2);
         ctx.fill();
-        ctx.fillStyle = "#1d0810";
+        ctx.fillStyle = "#172026";
         ctx.font = "700 9px ui-monospace";
         ctx.textAlign = "center";
         ctx.textBaseline = "middle";
@@ -290,8 +290,6 @@ export default function Home() {
           ctx.arc(0, 0, 20 + Math.sin(now / 90) * 2, 0, Math.PI * 2);
           ctx.stroke();
         }
-        ctx.shadowColor = color;
-        ctx.shadowBlur = active ? 18 : 10;
         ctx.beginPath();
         ctx.fillStyle = "#071116";
         ctx.strokeStyle = color;
@@ -299,7 +297,6 @@ export default function Home() {
         ctx.arc(0, 0, 14, 0, Math.PI * 2);
         ctx.fill();
         ctx.stroke();
-        ctx.shadowBlur = 0;
         ctx.fillStyle = color;
         ctx.strokeStyle = color;
         if (kind === "start") {
@@ -334,15 +331,15 @@ export default function Home() {
       ctx.lineWidth = 2;
       ctx.fillRect(-11, -8, 22, 16);
       ctx.strokeRect(-11, -8, 22, 16);
-      ctx.fillStyle = "#43d9ff";
+      ctx.fillStyle = "#00bfff";
       ctx.beginPath();
       ctx.moveTo(13, 0); ctx.lineTo(5, -5); ctx.lineTo(5, 5); ctx.closePath(); ctx.fill();
       ctx.fillStyle = "#071016";
       ctx.fillRect(-7, -11, 5, 4); ctx.fillRect(-7, 7, 5, 4); ctx.fillRect(3, -11, 5, 4); ctx.fillRect(3, 7, 5, 4);
       ctx.restore();
 
-      drawMarker(start, "#7df8cf", "start");
-      drawMarker(goal, "#ffb85b", "goal");
+      drawMarker(start, "#2ed47a", "start");
+      drawMarker(goal, "#ff9f43", "goal");
 
       frame = window.requestAnimationFrame(draw);
     };
@@ -374,7 +371,7 @@ export default function Home() {
     setExecutionCursor(0);
     setExecuting(false);
     setRunning(true);
-    setNotice("推演中：亮环表示 PICK，微光节点表示 GENERATE");
+    setNotice("推演中：亮环表示当前扩展节点，微光点表示本步新生成节点");
   };
 
   const pointerGridPosition = (event: React.PointerEvent<HTMLCanvasElement>, snap: boolean) => {
@@ -499,7 +496,7 @@ export default function Home() {
           <div className="section-label"><span>PLANNERS</span><b>算法选择</b></div>
           <div className="algorithm-list">
             {PLANNER_KEYS.map((key) => (
-              <label key={key}>
+              <label key={key} className={`planner-option ${key}`}>
                 <input type="checkbox" checked={enabled[key]} onChange={() => { clearRun(); setEnabled((current) => ({ ...current, [key]: !current[key] })); }} />
                 <i className={key} />{NAMES[key]}<small>{key === "astar" ? "f=g+h" : key === "dijkstra" ? "g only" : key === "rrt" ? "sample" : "rewire"}</small>
               </label>
@@ -553,13 +550,13 @@ export default function Home() {
             <span><i className="wall" />边界 / 静态障碍</span>
             <span><i className="dynamic" />动态障碍</span>
             <span><i className="inflated" />膨胀与代价</span>
-            <span><i className="pick-ring" />当前 PICK</span>
+            <span><i className="pick-ring" />当前扩展节点</span>
             <span className="legend-note">{notice}</span>
           </div>
         </section>
 
         <aside className="telemetry-panel panel">
-          <div className="panel-heading primary"><div><p>LIVE METRICS</p><h2>搜索状态</h2></div><i className="panel-signal" /></div>
+          <div className="panel-heading primary"><div><p>ALGORITHM DATA</p><h2>搜索状态</h2></div><i className="panel-signal" /></div>
           {PLANNER_KEYS.map((key) => {
             const result = results[key];
             const visible = result ? Math.min(Math.floor(progress), result.steps.length) : 0;
@@ -570,34 +567,37 @@ export default function Home() {
               : 0;
             return (
               <div key={key} className={`telemetry-card ${key}`}>
-                <div className="telemetry-title"><p>{NAMES[key]}</p><strong>{!enabled[key] ? "OFF" : !result ? "" : done ? result.found ? "PATH" : "FAIL" : "SEARCH"}</strong></div>
-                <div className="algorithm-formula"><span>PARAM</span><b>{FORMULAS[key]}</b></div>
+                <div className="telemetry-title"><p>{NAMES[key]}</p><strong>{!enabled[key] ? "关闭" : !result ? "" : done ? result.found ? "已完成" : "无路径" : "计算中"}</strong></div>
+                <div className="algorithm-formula"><span>核心规则</span><b>{FORMULAS[key]}</b></div>
                 <small>{DESCRIPTIONS[key]}</small>
                 <dl>
-                  <div><dt>PICK</dt><dd>{visible}</dd></div>
-                  <div><dt>GENERATE</dt><dd>{visibleGenerated}</dd></div>
-                  <div><dt>OPEN</dt><dd>{currentStep?.open ?? 0}</dd></div>
-                  <div><dt>CLOSED</dt><dd>{currentStep?.closed ?? 0}</dd></div>
-                  <div><dt>TIME</dt><dd>{result ? `${result.durationMs.toFixed(1)}ms` : "—"}</dd></div>
-                  <div><dt>PATH</dt><dd>{done && result?.found ? `${(result.pathLength * 0.25).toFixed(1)}m` : "—"}</dd></div>
+                  <div><dt>扩展</dt><dd>{visible}</dd></div>
+                  <div><dt>生成</dt><dd>{visibleGenerated}</dd></div>
+                  <div><dt>待选</dt><dd>{currentStep?.open ?? 0}</dd></div>
+                  <div><dt>已检</dt><dd>{currentStep?.closed ?? 0}</dd></div>
+                  <div><dt>耗时</dt><dd>{result ? `${result.durationMs.toFixed(1)}ms` : "—"}</dd></div>
+                  <div><dt>路径</dt><dd>{done && result?.found ? `${(result.pathLength * 0.25).toFixed(1)}m` : "—"}</dd></div>
                 </dl>
               </div>
             );
           })}
           <div className="event-log">
-            <p>EVENT STREAM</p>
+            <div className="event-log-heading"><p>推演记录</p><small>“扩展”是当前检查的节点，“生成”是本步发现的候选节点</small></div>
             {resultList.length === 0 ? (
-              <><span><b>00</b> 等待规划任务</span><span><b>01</b> 代价地图已就绪</span><span><b>02</b> 动态感知运行中</span></>
+              <><span><b>地图</b> 障碍与代价数据已载入</span><span><b>操作</b> 设置起终点后启动路径规划</span><span><b>回放</b> 生成结果后可拖动时间轴</span></>
             ) : resultList.map((result) => {
               const step = visibleStep(result);
+              const done = Math.floor(progress) >= result.steps.length;
               return (
                 <span key={result.key}>
                   <b style={{ color: COLORS[result.key] }}>{NAMES[result.key]}</b>
-                  {step ? `PICK ${formatCell(step.pick)} → GEN ${step.generated.length}` : "初始化 OPEN SET"}
+                  {done
+                    ? result.found ? `已找到路径，长度 ${(result.pathLength * 0.25).toFixed(1)}m` : "搜索结束，未找到路径"
+                    : step ? `正在检查 ${formatCell(step.pick)}，新增 ${step.generated.length} 个候选点` : "等待开始推演"}
                 </span>
               );
             })}
-            {executing && <span><b>BOT</b> 局部闭环跟踪中</span>}
+            {executing && <span><b>机器人</b> 正在沿优先路径移动</span>}
           </div>
         </aside>
       </section>

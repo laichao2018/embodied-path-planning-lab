@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import test from "node:test";
+import test, { after, beforeEach } from "node:test";
 
 import {
   COLS,
@@ -20,6 +20,11 @@ const scenarios: Array<{ start: Point; goal: Point }> = [
   { start: { x: 3, y: 20 }, goal: { x: 32, y: 3 } },
   { start: { x: 2, y: 2 }, goal: { x: 31, y: 20 } },
 ];
+
+// Keep the legacy collision scenarios on their compact reference map. The app
+// itself now boots into the larger 120 × 100 workspace.
+beforeEach(() => configureGrid(35, 24));
+after(() => configureGrid(120, 100));
 
 function assertPathIsCollisionFree(path: Point[], blocked: Set<string>) {
   for (let index = 1; index < path.length; index += 1) {

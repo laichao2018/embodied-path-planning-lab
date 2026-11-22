@@ -1,14 +1,18 @@
 (function () {
   "use strict";
 
-  let CELL = 24;
+  // The obstacle template uses the original compact coordinate system, while the
+  // workspace opens on a more spacious 120 × 100 map.
   const BASE_COLS = 35;
   const BASE_ROWS = 24;
+  const DEFAULT_COLS = 120;
+  const DEFAULT_ROWS = 100;
   const MAX_RENDER_WIDTH = 1200;
   const MAX_RENDER_HEIGHT = 800;
   const GRID_LIMITS = { minCols: 32, maxCols: 240, minRows: 20, maxRows: 200 };
-  let COLS = BASE_COLS;
-  let ROWS = BASE_ROWS;
+  let CELL = Math.max(3, Math.min(24, Math.floor(Math.min(MAX_RENDER_WIDTH / DEFAULT_COLS, MAX_RENDER_HEIGHT / DEFAULT_ROWS))));
+  let COLS = DEFAULT_COLS;
+  let ROWS = DEFAULT_ROWS;
   let WIDTH = COLS * CELL;
   let HEIGHT = ROWS * CELL;
   const PLANNERS = ["astar", "dijkstra", "rrt", "rrtstar"];

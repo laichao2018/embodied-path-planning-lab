@@ -16,7 +16,7 @@
           <div><strong>NAV STUDIO</strong><p>ROBOT PATH PLANNING WORKSPACE</p></div>
         </div>
         <div class="workspace-stats">
-          <span>GRID <b id="grid-size-stat">35 × 24</b></span>
+          <span>GRID <b id="grid-size-stat">120 × 100</b></span>
           <span>PLANNERS <b>04</b></span>
           <span>OBSTACLES <b>LIVE</b></span>
         </div>
@@ -28,9 +28,9 @@
           <div class="panel-heading primary"><div><p>CONTROL DECK</p><h2>规划控制</h2></div><i class="panel-signal"></i></div>
           <div class="section-label"><span>MAP SIZE</span><b>32–240 列 / 20–200 行</b></div>
           <div class="grid-size-control">
-            <label>列<input id="grid-cols" type="number" min="32" max="240" value="35" aria-label="地图列数" /></label>
+            <label>列<input id="grid-cols" type="number" min="32" max="240" value="120" aria-label="地图列数" /></label>
             <i>×</i>
-            <label>行<input id="grid-rows" type="number" min="20" max="200" value="24" aria-label="地图行数" /></label>
+            <label>行<input id="grid-rows" type="number" min="20" max="200" value="100" aria-label="地图行数" /></label>
             <button id="apply-grid" type="button">应用</button>
           </div>
           <div class="segmented" id="layer-controls">
@@ -57,8 +57,8 @@
 
           <div class="section-label"><span>MISSION</span><b>拖拽任务点</b></div>
           <div class="point-readout">
-            <button id="select-start" type="button" class="selected"><i class="start-swatch"></i> 起点 <b id="start-value">03,20</b></button>
-            <button id="select-goal" type="button"><i class="goal-swatch"></i> 终点 <b id="goal-value">32,03</b></button>
+            <button id="select-start" type="button" class="selected"><i class="start-swatch"></i> 起点 <b id="start-value">10,83</b></button>
+            <button id="select-goal" type="button"><i class="goal-swatch"></i> 终点 <b id="goal-value">110,13</b></button>
           </div>
           <p class="drag-hint">按住地图中的图标并拖到自由栅格</p>
           <button class="reset-button" id="reset-points" type="button">重置起终点</button>
@@ -106,7 +106,7 @@
             <div><span class="pulse"></span> PLANNING WORLD <i>/</i> <b id="layer-name">COST</b></div>
             <p id="run-state">DRAG MARKERS</p>
           </div>
-          <canvas id="map" width="840" height="576" aria-label="交互式路径规划地图，可拖动起终点和静态障碍，右键编辑或添加静态障碍"></canvas>
+          <canvas id="map" width="960" height="800" aria-label="交互式路径规划地图，可拖动起终点和静态障碍，右键编辑或添加静态障碍"></canvas>
           <div class="static-menu" id="static-menu" hidden>
             <div><b id="static-menu-title">添加静态障碍</b><button id="close-static-menu" type="button" aria-label="关闭静态障碍菜单">×</button></div>
             <p id="static-menu-position">位置 00,00</p>

@@ -392,6 +392,10 @@
       const result = state.results[planner];
       const visible = result ? Math.min(Math.floor(state.progress), result.steps.length) : 0;
       const done = Boolean(result && visible >= result.steps.length);
+      const currentStep = result ? result.steps[visible - 1] : null;
+      const visibleGenerated = result
+        ? 1 + result.steps.slice(0, visible).reduce((total, step) => total + step.generated.length, 0)
+        : 0;
       card.querySelector("strong").textContent = !state.enabled[planner]
         ? "OFF"
         : !result
@@ -400,6 +404,10 @@
             ? result.found ? "PATH" : "FAIL"
             : "SEARCH";
       card.querySelector("[data-pick]").textContent = String(visible);
+      card.querySelector("[data-generated]").textContent = String(visibleGenerated);
+      card.querySelector("[data-open]").textContent = String(currentStep ? currentStep.open : 0);
+      card.querySelector("[data-closed]").textContent = String(currentStep ? currentStep.closed : 0);
+      card.querySelector("[data-time]").textContent = result ? `${result.durationMs.toFixed(1)}ms` : "—";
       card.querySelector("[data-path]").textContent = done && result.found
         ? `${(result.pathLength * 0.25).toFixed(1)}m`
         : "—";

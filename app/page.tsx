@@ -445,6 +445,10 @@ export default function Home() {
             const result = results[key];
             const visible = result ? Math.min(Math.floor(progress), result.steps.length) : 0;
             const done = result && visible >= result.steps.length;
+            const currentStep = result ? visibleStep(result) : undefined;
+            const visibleGenerated = result
+              ? 1 + result.steps.slice(0, visible).reduce((total, step) => total + step.generated.length, 0)
+              : 0;
             return (
               <div key={key} className={`telemetry-card ${key}`}>
                 <div className="telemetry-title"><p>{NAMES[key]}</p><span style={{ background: COLORS[key] }} /></div>
@@ -452,6 +456,10 @@ export default function Home() {
                 <small>{DESCRIPTIONS[key]}</small>
                 <dl>
                   <div><dt>PICK</dt><dd>{visible}</dd></div>
+                  <div><dt>GENERATE</dt><dd>{visibleGenerated}</dd></div>
+                  <div><dt>OPEN</dt><dd>{currentStep?.open ?? 0}</dd></div>
+                  <div><dt>CLOSED</dt><dd>{currentStep?.closed ?? 0}</dd></div>
+                  <div><dt>TIME</dt><dd>{result ? `${result.durationMs.toFixed(1)}ms` : "—"}</dd></div>
                   <div><dt>PATH</dt><dd>{done && result?.found ? `${(result.pathLength * 0.25).toFixed(1)}m` : "—"}</dd></div>
                 </dl>
               </div>

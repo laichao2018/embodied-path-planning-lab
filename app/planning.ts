@@ -1,4 +1,5 @@
 export type Point = { x: number; y: number };
+export type StaticRect = { x: number; y: number; w: number; h: number };
 export type PlannerKey = "astar" | "dijkstra" | "rrt" | "rrtstar";
 export type DynamicMotion = "regular" | "random";
 export type DynamicObstacleSeed = Point & { phase: number };
@@ -28,16 +29,18 @@ export type CostField = {
   costs: number[][];
 };
 
-export const CELL = 24;
+export let CELL = 24;
 const BASE_COLS = 35;
 const BASE_ROWS = 24;
-export const GRID_LIMITS = { minCols: 32, maxCols: 60, minRows: 20, maxRows: 40 };
+const MAX_RENDER_WIDTH = 1200;
+const MAX_RENDER_HEIGHT = 800;
+export const GRID_LIMITS = { minCols: 32, maxCols: 240, minRows: 20, maxRows: 200 };
 export let COLS = BASE_COLS;
 export let ROWS = BASE_ROWS;
 export let CANVAS_WIDTH = COLS * CELL;
 export let CANVAS_HEIGHT = ROWS * CELL;
 
-const BASE_STATIC_RECTS = [
+const BASE_STATIC_RECTS: StaticRect[] = [
   { x: 6, y: 3, w: 4, h: 7 },
   { x: 15, y: 0, w: 3, h: 8 },
   { x: 22, y: 10, w: 9, h: 3 },
@@ -46,7 +49,7 @@ const BASE_STATIC_RECTS = [
   { x: 4, y: 14, w: 5, h: 2 },
 ];
 
-function staticRectsForGrid(cols: number, rows: number) {
+function staticRectsForGrid(cols: number, rows: number): StaticRect[] {
   return BASE_STATIC_RECTS.map((rect) => {
     const x = Math.max(1, Math.min(cols - 2, Math.round((rect.x / BASE_COLS) * cols)));
     const y = Math.max(0, Math.min(rows - 2, Math.round((rect.y / BASE_ROWS) * rows)));
@@ -61,6 +64,7 @@ export let STATIC_RECTS = staticRectsForGrid(COLS, ROWS);
 export function configureGrid(cols: number, rows: number) {
   COLS = Math.max(GRID_LIMITS.minCols, Math.min(GRID_LIMITS.maxCols, Math.round(cols)));
   ROWS = Math.max(GRID_LIMITS.minRows, Math.min(GRID_LIMITS.maxRows, Math.round(rows)));
+  CELL = Math.max(3, Math.min(24, Math.floor(Math.min(MAX_RENDER_WIDTH / COLS, MAX_RENDER_HEIGHT / ROWS))));
   CANVAS_WIDTH = COLS * CELL;
   CANVAS_HEIGHT = ROWS * CELL;
   STATIC_RECTS = staticRectsForGrid(COLS, ROWS);
@@ -113,9 +117,13 @@ function addRectCells(target: Set<string>, x: number, y: number, w: number, h: n
   }
 }
 
-export function makeCostField(dynamicObstacles: Point[], inflationRadius: number): CostField {
+export function makeCostField(
+  dynamicObstacles: Point[],
+  inflationRadius: number,
+  staticRects: StaticRect[] = STATIC_RECTS,
+): CostField {
   const raw = new Set<string>();
-  STATIC_RECTS.forEach((rect) => addRectCells(raw, rect.x, rect.y, rect.w, rect.h));
+  staticRects.forEach((rect) => addRectCells(raw, rect.x, rect.y, rect.w, rect.h));
   for (let x = 0; x < COLS; x += 1) {
     raw.add(`${x},0`);
     raw.add(`${x},${ROWS - 1}`);
@@ -134,24 +142,34 @@ export function makeCostField(dynamicObstacles: Point[], inflationRadius: number
     }
   });
 
-  const obstaclePoints = [...raw].map((key) => {
-    const [x, y] = key.split(",").map(Number);
-    return { x, y };
-  });
-  const blocked = new Set<string>();
+  const obstaclePoints = [...raw]
+    .map((key) => {
+      const [x, y] = key.split(",").map(Number);
+      return { x, y };
+    })
+    .filter((point) => point.x >= 0 && point.x < COLS && point.y >= 0 && point.y < ROWS);
+  const blocked = new Set<string>(raw);
   const costs = Array.from({ length: ROWS }, () => Array.from({ length: COLS }, () => 1));
+  obstaclePoints.forEach((point) => { costs[point.y][point.x] = 99; });
 
-  for (let y = 0; y < ROWS; y += 1) {
-    for (let x = 0; x < COLS; x += 1) {
-      let minDistance = Number.POSITIVE_INFINITY;
-      for (const obstacle of obstaclePoints) {
-        minDistance = Math.min(minDistance, Math.hypot(x - obstacle.x, y - obstacle.y));
+  // Only a local safety band has non-neutral cost. Updating that band per obstacle
+  // keeps the cost map responsive even at the 240 × 200 grid limit.
+  const safetyReach = inflationRadius + 3.2;
+  const extent = Math.ceil(safetyReach);
+  obstaclePoints.forEach((obstacle) => {
+    for (let y = Math.max(0, obstacle.y - extent); y <= Math.min(ROWS - 1, obstacle.y + extent); y += 1) {
+      for (let x = Math.max(0, obstacle.x - extent); x <= Math.min(COLS - 1, obstacle.x + extent); x += 1) {
+        const distance = Math.hypot(x - obstacle.x, y - obstacle.y);
+        if (distance > safetyReach) continue;
+        const key = `${x},${y}`;
+        if (distance <= inflationRadius) blocked.add(key);
+        if (!raw.has(key)) {
+          const safetyBand = safetyReach - distance;
+          costs[y][x] = Math.max(costs[y][x], 1 + safetyBand * safetyBand * 0.65);
+        }
       }
-      if (minDistance <= inflationRadius) blocked.add(`${x},${y}`);
-      const safetyBand = Math.max(0, inflationRadius + 3.2 - minDistance);
-      costs[y][x] = raw.has(`${x},${y}`) ? 99 : 1 + safetyBand * safetyBand * 0.65;
     }
-  }
+  });
   return { raw, blocked, costs };
 }
 

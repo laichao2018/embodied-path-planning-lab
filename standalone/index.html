@@ -26,11 +26,11 @@
       <section class="lab-grid">
         <aside class="control-panel panel">
           <div class="panel-heading primary"><div><p>CONTROL DECK</p><h2>规划控制</h2></div><i class="panel-signal"></i></div>
-          <div class="section-label"><span>MAP SIZE</span><b>32–60 列 / 20–40 行</b></div>
+          <div class="section-label"><span>MAP SIZE</span><b>32–240 列 / 20–200 行</b></div>
           <div class="grid-size-control">
-            <label>列<input id="grid-cols" type="number" min="32" max="60" value="35" aria-label="地图列数" /></label>
+            <label>列<input id="grid-cols" type="number" min="32" max="240" value="35" aria-label="地图列数" /></label>
             <i>×</i>
-            <label>行<input id="grid-rows" type="number" min="20" max="40" value="24" aria-label="地图行数" /></label>
+            <label>行<input id="grid-rows" type="number" min="20" max="200" value="24" aria-label="地图行数" /></label>
             <button id="apply-grid" type="button">应用</button>
           </div>
           <div class="segmented" id="layer-controls">
@@ -73,22 +73,21 @@
               <label class="planner-option rrtstar"><input id="enable-rrtstar" type="checkbox" checked /><i class="rrtstar"></i>RRT* <small>rewire</small></label>
             </div>
           </details>
-          <div class="planner-status-view">
-            <label class="status-selector">查看状态<select id="status-planner"><option value="astar">A*</option><option value="dijkstra">DIJKSTRA</option><option value="rrt">RRT</option><option value="rrtstar">RRT*</option></select></label>
+          <div class="planner-status-view multi">
             <p class="empty-planner-status" id="empty-planner-status" hidden>请从上方下拉框勾选至少一种算法</p>
             <div class="telemetry-card compact astar" data-card="astar">
               <div class="telemetry-title"><p>A*</p><strong></strong></div><div class="algorithm-formula"><span>核心规则</span><b>f(n) = g(n) + h(n)</b></div>
               <dl><div><dt>扩展</dt><dd data-pick>0</dd></div><div><dt>生成</dt><dd data-generated>0</dd></div><div><dt>待选</dt><dd data-open>0</dd></div><div><dt>已检</dt><dd data-closed>0</dd></div><div><dt>耗时</dt><dd data-time>—</dd></div><div><dt>路径</dt><dd data-path>—</dd></div></dl><p class="status-explanation" data-status-text>等待启动路径规划</p>
             </div>
-            <div class="telemetry-card compact dijkstra" data-card="dijkstra" hidden>
+            <div class="telemetry-card compact dijkstra" data-card="dijkstra">
               <div class="telemetry-title"><p>DIJKSTRA</p><strong></strong></div><div class="algorithm-formula"><span>核心规则</span><b>priority = g(n)</b></div>
               <dl><div><dt>扩展</dt><dd data-pick>0</dd></div><div><dt>生成</dt><dd data-generated>0</dd></div><div><dt>待选</dt><dd data-open>0</dd></div><div><dt>已检</dt><dd data-closed>0</dd></div><div><dt>耗时</dt><dd data-time>—</dd></div><div><dt>路径</dt><dd data-path>—</dd></div></dl><p class="status-explanation" data-status-text>等待启动路径规划</p>
             </div>
-            <div class="telemetry-card compact rrt" data-card="rrt" hidden>
+            <div class="telemetry-card compact rrt" data-card="rrt">
               <div class="telemetry-title"><p>RRT</p><strong></strong></div><div class="algorithm-formula"><span>核心规则</span><b>qnew = STEER(qnear, qrand)</b></div>
               <dl><div><dt>扩展</dt><dd data-pick>0</dd></div><div><dt>生成</dt><dd data-generated>0</dd></div><div><dt>待选</dt><dd data-open>0</dd></div><div><dt>已检</dt><dd data-closed>0</dd></div><div><dt>耗时</dt><dd data-time>—</dd></div><div><dt>路径</dt><dd data-path>—</dd></div></dl><p class="status-explanation" data-status-text>等待启动路径规划</p>
             </div>
-            <div class="telemetry-card compact rrtstar" data-card="rrtstar" hidden>
+            <div class="telemetry-card compact rrtstar" data-card="rrtstar">
               <div class="telemetry-title"><p>RRT*</p><strong></strong></div><div class="algorithm-formula"><span>核心规则</span><b>Jnew = min(Jnear + c)</b></div>
               <dl><div><dt>扩展</dt><dd data-pick>0</dd></div><div><dt>生成</dt><dd data-generated>0</dd></div><div><dt>待选</dt><dd data-open>0</dd></div><div><dt>已检</dt><dd data-closed>0</dd></div><div><dt>耗时</dt><dd data-time>—</dd></div><div><dt>路径</dt><dd data-path>—</dd></div></dl><p class="status-explanation" data-status-text>等待启动路径规划</p>
             </div>
@@ -102,12 +101,19 @@
           <button class="run-button" id="run-planner" type="button">启动路径规划 <span>→</span></button>
         </aside>
 
-        <section class="map-panel panel">
+        <section class="map-panel panel" id="map-panel">
           <div class="map-toolbar">
             <div><span class="pulse"></span> PLANNING WORLD <i>/</i> <b id="layer-name">COST</b></div>
             <p id="run-state">DRAG MARKERS</p>
           </div>
-          <canvas id="map" width="840" height="576" aria-label="交互式路径规划地图，可拖动起终点或点击放置动态障碍"></canvas>
+          <canvas id="map" width="840" height="576" aria-label="交互式路径规划地图，可拖动起终点和静态障碍，右键编辑或添加静态障碍"></canvas>
+          <div class="static-menu" id="static-menu" hidden>
+            <div><b id="static-menu-title">添加静态障碍</b><button id="close-static-menu" type="button" aria-label="关闭静态障碍菜单">×</button></div>
+            <p id="static-menu-position">位置 00,00</p>
+            <label>宽度<input id="static-width" type="number" min="1" value="3" /></label>
+            <label>高度<input id="static-height" type="number" min="1" value="3" /></label>
+            <div class="static-menu-actions"><button id="save-static" type="button">添加</button><button id="delete-static" class="delete" type="button" hidden>清除</button></div>
+          </div>
           <div class="timeline-control disabled" id="timeline-control">
             <span>REPLAY</span>
             <div class="timeline-range"><i id="progress-bar"></i><input id="timeline-slider" type="range" min="0" max="1" step="1" value="0" disabled aria-label="拖动查看路径规划推演过程" /></div>

@@ -1,10 +1,12 @@
 (function () {
   "use strict";
 
-  const CELL = 24;
+  let CELL = 24;
   const BASE_COLS = 35;
   const BASE_ROWS = 24;
-  const GRID_LIMITS = { minCols: 32, maxCols: 60, minRows: 20, maxRows: 40 };
+  const MAX_RENDER_WIDTH = 1200;
+  const MAX_RENDER_HEIGHT = 800;
+  const GRID_LIMITS = { minCols: 32, maxCols: 240, minRows: 20, maxRows: 200 };
   let COLS = BASE_COLS;
   let ROWS = BASE_ROWS;
   let WIDTH = COLS * CELL;
@@ -34,6 +36,7 @@
   function configureGrid(cols, rows) {
     COLS = Math.max(GRID_LIMITS.minCols, Math.min(GRID_LIMITS.maxCols, Math.round(cols)));
     ROWS = Math.max(GRID_LIMITS.minRows, Math.min(GRID_LIMITS.maxRows, Math.round(rows)));
+    CELL = Math.max(3, Math.min(24, Math.floor(Math.min(MAX_RENDER_WIDTH / COLS, MAX_RENDER_HEIGHT / ROWS))));
     WIDTH = COLS * CELL;
     HEIGHT = ROWS * CELL;
     STATIC_RECTS = staticRectsForGrid(COLS, ROWS);
@@ -69,6 +72,7 @@
   }
 
   const canvas = document.getElementById("map");
+  const mapPanel = document.getElementById("map-panel");
   const ctx = canvas.getContext("2d");
   const elements = {
     layerControls: document.getElementById("layer-controls"),
@@ -99,8 +103,15 @@
     progressBar: document.getElementById("progress-bar"),
     notice: document.getElementById("notice"),
     plannerPickerCount: document.getElementById("planner-picker-count"),
-    statusPlanner: document.getElementById("status-planner"),
     emptyPlannerStatus: document.getElementById("empty-planner-status"),
+    staticMenu: document.getElementById("static-menu"),
+    staticMenuTitle: document.getElementById("static-menu-title"),
+    staticMenuPosition: document.getElementById("static-menu-position"),
+    staticWidth: document.getElementById("static-width"),
+    staticHeight: document.getElementById("static-height"),
+    saveStatic: document.getElementById("save-static"),
+    deleteStatic: document.getElementById("delete-static"),
+    closeStaticMenu: document.getElementById("close-static-menu"),
   };
 
   const state = {
@@ -113,7 +124,6 @@
     dynamicMotion: "regular",
     dynamicSeeds: defaultDynamicObstacles(),
     placingDynamic: false,
-    focusedPlanner: "astar",
     enabled: { astar: true, dijkstra: true, rrt: true, rrtstar: true },
     results: {},
     progress: 0,
@@ -121,6 +131,8 @@
     executing: false,
     executionCursor: 0,
     draggingMarker: null,
+    draggingStatic: null,
+    staticMenu: null,
     notice: "拖动地图上的起点或终点图标设置位置",
   };
 
@@ -162,9 +174,9 @@
     }
   }
 
-  function makeCostField(dynamicObstacles, inflationRadius) {
+  function makeCostField(dynamicObstacles, inflationRadius, staticRects = STATIC_RECTS) {
     const raw = new Set();
-    STATIC_RECTS.forEach((rect) => addRectCells(raw, rect.x, rect.y, rect.w, rect.h));
+    staticRects.forEach((rect) => addRectCells(raw, rect.x, rect.y, rect.w, rect.h));
     for (let x = 0; x < COLS; x += 1) {
       raw.add(`${x},0`);
       raw.add(`${x},${ROWS - 1}`);
@@ -186,20 +198,26 @@
     const obstaclePoints = [...raw].map((key) => {
       const [x, y] = key.split(",").map(Number);
       return { x, y };
-    });
-    const blocked = new Set();
+    }).filter((point) => point.x >= 0 && point.x < COLS && point.y >= 0 && point.y < ROWS);
+    const blocked = new Set(raw);
     const costs = Array.from({ length: ROWS }, () => Array.from({ length: COLS }, () => 1));
-    for (let y = 0; y < ROWS; y += 1) {
-      for (let x = 0; x < COLS; x += 1) {
-        let minDistance = Number.POSITIVE_INFINITY;
-        obstaclePoints.forEach((obstacle) => {
-          minDistance = Math.min(minDistance, Math.hypot(x - obstacle.x, y - obstacle.y));
-        });
-        if (minDistance <= inflationRadius) blocked.add(`${x},${y}`);
-        const safetyBand = Math.max(0, inflationRadius + 3.2 - minDistance);
-        costs[y][x] = raw.has(`${x},${y}`) ? 99 : 1 + safetyBand * safetyBand * 0.65;
+    obstaclePoints.forEach((point) => { costs[point.y][point.x] = 99; });
+    const safetyReach = inflationRadius + 3.2;
+    const extent = Math.ceil(safetyReach);
+    obstaclePoints.forEach((obstacle) => {
+      for (let y = Math.max(0, obstacle.y - extent); y <= Math.min(ROWS - 1, obstacle.y + extent); y += 1) {
+        for (let x = Math.max(0, obstacle.x - extent); x <= Math.min(COLS - 1, obstacle.x + extent); x += 1) {
+          const distance = Math.hypot(x - obstacle.x, y - obstacle.y);
+          if (distance > safetyReach) continue;
+          const key = `${x},${y}`;
+          if (distance <= inflationRadius) blocked.add(key);
+          if (!raw.has(key)) {
+            const safetyBand = safetyReach - distance;
+            costs[y][x] = Math.max(costs[y][x], 1 + safetyBand * safetyBand * 0.65);
+          }
+        }
       }
-    }
+    });
     return { raw, blocked, costs };
   }
 
@@ -579,12 +597,7 @@
       document.getElementById(`enable-${planner}`).checked = state.enabled[planner];
     });
     const enabledPlanners = PLANNERS.filter((planner) => state.enabled[planner]);
-    if (!state.enabled[state.focusedPlanner] && enabledPlanners.length) state.focusedPlanner = enabledPlanners[0];
     elements.plannerPickerCount.textContent = `${enabledPlanners.length} / ${PLANNERS.length}`;
-    const options = enabledPlanners.map((planner) => `<option value="${planner}">${NAMES[planner]}</option>`).join("");
-    if (elements.statusPlanner.innerHTML !== options) elements.statusPlanner.innerHTML = options;
-    elements.statusPlanner.disabled = !enabledPlanners.length;
-    if (enabledPlanners.length) elements.statusPlanner.value = state.focusedPlanner;
     elements.emptyPlannerStatus.hidden = Boolean(enabledPlanners.length);
     updateTelemetry();
   }
@@ -602,6 +615,7 @@
     if (state.running) elements.runState.textContent = `SEARCH ${Math.round(percent)}%`;
     else if (state.executing) elements.runState.textContent = "ROBOT EXECUTING";
     else if (state.placingDynamic) elements.runState.textContent = "ADD DYNAMIC OBSTACLE";
+    else if (state.draggingStatic) elements.runState.textContent = "DRAG STATIC OBSTACLE";
     else if (state.draggingMarker) elements.runState.textContent = `DRAG ${state.draggingMarker.toUpperCase()}`;
     else elements.runState.textContent = "DRAG MARKERS";
 
@@ -622,7 +636,7 @@
       const visibleGenerated = result
         ? 1 + result.steps.slice(0, visible).reduce((total, step) => total + step.generated.length, 0)
         : 0;
-      card.hidden = planner !== state.focusedPlanner || !state.enabled[planner];
+      card.hidden = !state.enabled[planner];
       card.querySelector("strong").textContent = !state.enabled[planner]
         ? "关闭"
         : !result
@@ -694,7 +708,91 @@
     };
   }
 
+  function pointInStaticRect(point, rect) {
+    return point.x >= rect.x && point.x < rect.x + rect.w && point.y >= rect.y && point.y < rect.y + rect.h;
+  }
+
+  function staticRectsOverlap(a, b) {
+    return a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y;
+  }
+
+  function staticRectIsAllowed(candidate, index) {
+    if (pointInStaticRect(state.start, candidate) || pointInStaticRect(state.goal, candidate)) return false;
+    return !STATIC_RECTS.some((rect, rectIndex) => rectIndex !== index && staticRectsOverlap(candidate, rect));
+  }
+
+  function closeStaticMenu() {
+    state.staticMenu = null;
+    elements.staticMenu.hidden = true;
+  }
+
+  function openStaticMenu(event) {
+    event.preventDefault();
+    const point = pointerGridPosition(event, true);
+    const index = STATIC_RECTS.findIndex((rect) => pointInStaticRect(point, rect));
+    const rect = index >= 0 ? STATIC_RECTS[index] : { x: point.x, y: point.y, w: 3, h: 3 };
+    const bounds = mapPanel.getBoundingClientRect();
+    const left = Math.max(8, Math.min(bounds.width - 218, event.clientX - bounds.left));
+    const top = Math.max(40, Math.min(bounds.height - 164, event.clientY - bounds.top));
+    state.placingDynamic = false;
+    state.staticMenu = { index: index >= 0 ? index : null, point: { x: rect.x, y: rect.y } };
+    elements.staticMenu.style.left = `${left}px`;
+    elements.staticMenu.style.top = `${top}px`;
+    elements.staticMenuTitle.textContent = index >= 0 ? "编辑静态障碍" : "添加静态障碍";
+    elements.staticMenuPosition.textContent = `位置 ${formatCell(rect)}`;
+    elements.staticWidth.value = String(rect.w);
+    elements.staticHeight.value = String(rect.h);
+    elements.staticWidth.max = String(Math.max(1, COLS - 1 - rect.x));
+    elements.staticHeight.max = String(Math.max(1, ROWS - 1 - rect.y));
+    elements.saveStatic.textContent = index >= 0 ? "保存" : "添加";
+    elements.deleteStatic.hidden = index < 0;
+    elements.staticMenu.hidden = false;
+    canvas.classList.remove("is-placing-dynamic");
+    setNotice(index >= 0 ? "可调整该静态障碍的尺寸、删除或拖动位置" : "设置尺寸后可在此处添加静态障碍");
+    updateInterface();
+  }
+
+  function saveStaticObstacle() {
+    if (!state.staticMenu) return;
+    const { index, point } = state.staticMenu;
+    const x = Math.max(1, Math.min(COLS - 2, point.x));
+    const y = Math.max(1, Math.min(ROWS - 2, point.y));
+    const candidate = {
+      x,
+      y,
+      w: Math.max(1, Math.min(COLS - 1 - x, Math.round(Number(elements.staticWidth.value)) || 1)),
+      h: Math.max(1, Math.min(ROWS - 1 - y, Math.round(Number(elements.staticHeight.value)) || 1)),
+    };
+    if (!staticRectIsAllowed(candidate, index)) {
+      setNotice("静态障碍不能覆盖起终点或与其他静态障碍重叠");
+      return;
+    }
+    clearRun();
+    if (index === null) {
+      STATIC_RECTS.push(candidate);
+      setNotice(`已添加 ${candidate.w} × ${candidate.h} 的静态障碍`);
+    } else {
+      STATIC_RECTS[index] = candidate;
+      setNotice("静态障碍尺寸已更新");
+    }
+    cachedField = makeCostField(dynamicObstaclesAt(performance.now()), state.inflation);
+    closeStaticMenu();
+    updateInterface();
+  }
+
+  function deleteStaticObstacle() {
+    if (!state.staticMenu || state.staticMenu.index === null) return;
+    clearRun();
+    STATIC_RECTS.splice(state.staticMenu.index, 1);
+    cachedField = makeCostField(dynamicObstaclesAt(performance.now()), state.inflation);
+    closeStaticMenu();
+    setNotice("静态障碍已清除");
+    updateInterface();
+  }
+
   function beginMarkerDrag(event) {
+    if (event.button !== 0) return;
+    closeStaticMenu();
     const raw = pointerGridPosition(event, false);
     const startDistance = Math.hypot(raw.x - state.start.x, raw.y - state.start.y);
     const goalDistance = Math.hypot(raw.x - state.goal.x, raw.y - state.goal.y);
@@ -702,8 +800,22 @@
       ? startDistance <= goalDistance ? "start" : "goal"
       : null;
     if (!marker) {
-      if (!state.placingDynamic) return;
       const point = pointerGridPosition(event, true);
+      const staticIndex = STATIC_RECTS.findIndex((rect) => pointInStaticRect(point, rect));
+      if (staticIndex >= 0) {
+        const rect = STATIC_RECTS[staticIndex];
+        event.preventDefault();
+        canvas.setPointerCapture(event.pointerId);
+        clearRun();
+        state.placingDynamic = false;
+        state.draggingStatic = { index: staticIndex, offsetX: point.x - rect.x, offsetY: point.y - rect.y };
+        canvas.classList.remove("is-placing-dynamic");
+        canvas.classList.add("is-dragging");
+        setNotice("正在拖动静态障碍，松开后完成移动");
+        updateInterface();
+        return;
+      }
+      if (!state.placingDynamic) return;
       const staticField = makeCostField([], state.inflation);
       if (staticField.blocked.has(keyOf(point))) {
         setNotice("这里是静态障碍或膨胀区，不能放置动态障碍");
@@ -734,6 +846,7 @@
     clearRun();
     state.placingDynamic = false;
     state.draggingMarker = marker;
+    state.draggingStatic = null;
     state.placement = marker;
     canvas.classList.remove("is-placing-dynamic");
     canvas.classList.add("is-dragging");
@@ -742,8 +855,25 @@
   }
 
   function moveMarker(event) {
-    if (!state.draggingMarker) return;
     const point = pointerGridPosition(event, true);
+    if (state.draggingStatic) {
+      const current = STATIC_RECTS[state.draggingStatic.index];
+      if (!current) return;
+      const candidate = {
+        ...current,
+        x: Math.max(1, Math.min(COLS - 1 - current.w, point.x - state.draggingStatic.offsetX)),
+        y: Math.max(1, Math.min(ROWS - 1 - current.h, point.y - state.draggingStatic.offsetY)),
+      };
+      if (!staticRectIsAllowed(candidate, state.draggingStatic.index)) {
+        setNotice("静态障碍不能覆盖起终点或其他静态障碍");
+        return;
+      }
+      STATIC_RECTS[state.draggingStatic.index] = candidate;
+      cachedField = makeCostField(dynamicObstaclesAt(performance.now()), state.inflation);
+      setNotice("松开以固定静态障碍位置");
+      return;
+    }
+    if (!state.draggingMarker) return;
     const field = makeCostField(dynamicObstaclesAt(performance.now()), state.inflation);
     if (field.blocked.has(keyOf(point))) {
       setNotice("此处是障碍或膨胀区，图标不能放置");
@@ -764,8 +894,15 @@
   }
 
   function endMarkerDrag(event) {
-    if (!state.draggingMarker) return;
+    if (!state.draggingMarker && !state.draggingStatic) return;
     if (canvas.hasPointerCapture(event.pointerId)) canvas.releasePointerCapture(event.pointerId);
+    if (state.draggingStatic) {
+      state.draggingStatic = null;
+      canvas.classList.remove("is-dragging");
+      setNotice("静态障碍已更新，可以启动路径规划");
+      updateInterface();
+      return;
+    }
     const label = state.draggingMarker === "start" ? "起点" : "终点";
     state.draggingMarker = null;
     canvas.classList.remove("is-dragging");
@@ -776,41 +913,43 @@
   function drawMarker(point, color, kind, now) {
     const pixel = pointToCanvas(point);
     const active = state.draggingMarker === kind;
+    const markerSize = Math.max(5, Math.min(14, CELL * 0.58));
+    const markerScale = markerSize / 14;
     ctx.save();
     ctx.translate(pixel.x, pixel.y);
     if (active) {
       ctx.beginPath();
       ctx.strokeStyle = `${color}88`;
       ctx.lineWidth = 2;
-      ctx.arc(0, 0, 20 + Math.sin(now / 90) * 2, 0, Math.PI * 2);
+      ctx.arc(0, 0, markerSize + 6 + Math.sin(now / 90) * 2, 0, Math.PI * 2);
       ctx.stroke();
     }
     ctx.beginPath();
     ctx.fillStyle = "#ffffff";
     ctx.strokeStyle = color;
     ctx.lineWidth = 3;
-    ctx.arc(0, 0, 14, 0, Math.PI * 2);
+    ctx.arc(0, 0, markerSize, 0, Math.PI * 2);
     ctx.fill();
     ctx.stroke();
     ctx.fillStyle = color;
     ctx.strokeStyle = color;
     if (kind === "start") {
       ctx.beginPath();
-      ctx.moveTo(-4, -7);
-      ctx.lineTo(8, 0);
-      ctx.lineTo(-4, 7);
+      ctx.moveTo(-4 * markerScale, -7 * markerScale);
+      ctx.lineTo(8 * markerScale, 0);
+      ctx.lineTo(-4 * markerScale, 7 * markerScale);
       ctx.closePath();
       ctx.fill();
     } else {
       ctx.lineWidth = 2;
       ctx.beginPath();
-      ctx.moveTo(-5, 8);
-      ctx.lineTo(-5, -8);
+      ctx.moveTo(-5 * markerScale, 8 * markerScale);
+      ctx.lineTo(-5 * markerScale, -8 * markerScale);
       ctx.stroke();
       ctx.beginPath();
-      ctx.moveTo(-4, -7);
-      ctx.lineTo(8, -4);
-      ctx.lineTo(-4, 1);
+      ctx.moveTo(-4 * markerScale, -7 * markerScale);
+      ctx.lineTo(8 * markerScale, -4 * markerScale);
+      ctx.lineTo(-4 * markerScale, 1 * markerScale);
       ctx.closePath();
       ctx.fill();
     }
@@ -871,7 +1010,7 @@
     ctx.lineWidth = 1.5;
     STATIC_RECTS.forEach((rect) => {
       ctx.fillRect(rect.x * CELL, rect.y * CELL, rect.w * CELL, rect.h * CELL);
-      ctx.strokeRect(rect.x * CELL + 1, rect.y * CELL + 1, rect.w * CELL - 2, rect.h * CELL - 2);
+      ctx.strokeRect(rect.x * CELL + 1, rect.y * CELL + 1, Math.max(0, rect.w * CELL - 2), Math.max(0, rect.h * CELL - 2));
     });
     dynamicObstacles.forEach((point, index) => {
       const pixel = pointToCanvas(point);
@@ -885,17 +1024,17 @@
       }
       ctx.beginPath();
       ctx.fillStyle = "#1f2937";
-      ctx.arc(pixel.x, pixel.y, 13, 0, Math.PI * 2);
+      ctx.arc(pixel.x, pixel.y, Math.max(4, CELL * 0.54), 0, Math.PI * 2);
       ctx.fill();
       ctx.fillStyle = "#ffffff";
-      ctx.font = "700 9px ui-monospace, monospace";
+      ctx.font = `700 ${Math.max(6, Math.min(9, CELL * 0.38))}px ui-monospace, monospace`;
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
       ctx.fillText(`D${index + 1}`, pixel.x, pixel.y + 1);
     });
     ctx.strokeStyle = "#334155";
-    ctx.lineWidth = 8;
-    ctx.strokeRect(4, 4, WIDTH - 8, HEIGHT - 8);
+    ctx.lineWidth = Math.max(2, Math.min(8, CELL / 3));
+    ctx.strokeRect(2, 2, WIDTH - 4, HEIGHT - 4);
 
     resultList().forEach((result) => {
       const visible = Math.min(Math.floor(state.progress), result.steps.length);
@@ -917,7 +1056,7 @@
         steps.forEach((step) => {
           const pick = pointToCanvas(step.pick);
           ctx.fillStyle = `${color}20`;
-          ctx.fillRect(pick.x - CELL / 2 + 2, pick.y - CELL / 2 + 2, CELL - 4, CELL - 4);
+          ctx.fillRect(pick.x - CELL / 2 + 1, pick.y - CELL / 2 + 1, Math.max(1, CELL - 2), Math.max(1, CELL - 2));
           step.generated.forEach((point) => {
             const generated = pointToCanvas(point);
             ctx.beginPath();
@@ -998,10 +1137,12 @@
     state.goal = points.goal;
     state.placement = "start";
     state.draggingMarker = null;
+    state.draggingStatic = null;
     state.placingDynamic = false;
     state.dynamicSeeds = defaultDynamicObstacles();
     elements.gridCols.value = String(next.cols);
     elements.gridRows.value = String(next.rows);
+    closeStaticMenu();
     canvas.classList.remove("is-dragging", "is-placing-dynamic");
     cachedField = makeCostField(dynamicObstaclesAt(performance.now()), state.inflation);
     setNotice(`地图已调整为 ${next.cols} × ${next.rows}，障碍物与任务点已重新布局`);
@@ -1072,7 +1213,9 @@
     state.goal = points.goal;
     state.placement = "start";
     state.draggingMarker = null;
+    state.draggingStatic = null;
     state.placingDynamic = false;
+    closeStaticMenu();
     canvas.classList.remove("is-dragging", "is-placing-dynamic");
     setNotice("起终点已重置，可直接拖动图标调整位置");
     updateInterface();
@@ -1081,16 +1224,8 @@
     document.getElementById(`enable-${planner}`).addEventListener("change", (event) => {
       clearRun();
       state.enabled[planner] = event.target.checked;
-      if (!state.enabled[state.focusedPlanner]) {
-        const nextFocus = PLANNERS.find((key) => state.enabled[key]);
-        if (nextFocus) state.focusedPlanner = nextFocus;
-      }
       updateInterface();
     });
-  });
-  elements.statusPlanner.addEventListener("change", (event) => {
-    state.focusedPlanner = event.target.value;
-    updateTelemetry();
   });
   elements.speed.addEventListener("input", (event) => {
     state.speed = Number(event.target.value);
@@ -1106,10 +1241,14 @@
     updateTelemetry();
   });
   elements.runPlanner.addEventListener("click", startPlanning);
+  elements.closeStaticMenu.addEventListener("click", closeStaticMenu);
+  elements.saveStatic.addEventListener("click", saveStaticObstacle);
+  elements.deleteStatic.addEventListener("click", deleteStaticObstacle);
   canvas.addEventListener("pointerdown", beginMarkerDrag);
   canvas.addEventListener("pointermove", moveMarker);
   canvas.addEventListener("pointerup", endMarkerDrag);
   canvas.addEventListener("pointercancel", endMarkerDrag);
+  canvas.addEventListener("contextmenu", openStaticMenu);
 
   let previousFrame = performance.now();
   let progressAccumulator = 0;

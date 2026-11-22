@@ -4,6 +4,8 @@ import test from "node:test";
 import {
   COLS,
   ROWS,
+  CANVAS_HEIGHT,
+  CANVAS_WIDTH,
   configureGrid,
   defaultDynamicObstacles,
   dynamicObstaclesAt,
@@ -99,6 +101,23 @@ test("all planners support a user-defined grid size", () => {
       assert.equal(result.found, true);
       assertPathIsCollisionFree(result.path, field.blocked);
     }
+  } finally {
+    configureGrid(35, 24);
+  }
+});
+
+test("maximum 240 by 200 grid keeps a bounded render surface and cost field", () => {
+  try {
+    configureGrid(240, 200);
+    assert.equal(COLS, 240);
+    assert.equal(ROWS, 200);
+    assert.ok(CANVAS_WIDTH <= 1_200);
+    assert.ok(CANVAS_HEIGHT <= 800);
+
+    const field = makeCostField(dynamicObstaclesAt(1_000), 1.45);
+    assert.equal(field.costs.length, 200);
+    assert.equal(field.costs[0].length, 240);
+    assert.ok(field.blocked.size > 0);
   } finally {
     configureGrid(35, 24);
   }

@@ -20,10 +20,20 @@ import {
   type Point,
   type DynamicMotion,
   type DynamicObstacleSeed,
+  type StaticRect,
 } from "./planning";
 
 type Layer = "raw" | "inflation" | "cost";
 type Results = Partial<Record<PlannerKey, PlannerResult>>;
+type StaticDrag = { index: number; offsetX: number; offsetY: number };
+type StaticMenu = {
+  left: number;
+  top: number;
+  index: number | null;
+  point: Point;
+  width: number;
+  height: number;
+};
 const PLANNER_KEYS: PlannerKey[] = ["astar", "dijkstra", "rrt", "rrtstar"];
 
 const COLORS: Record<PlannerKey, string> = {
@@ -77,6 +87,7 @@ function formatCell(point: Point) {
 
 export default function Home() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const mapPanelRef = useRef<HTMLElement>(null);
   const [layer, setLayer] = useState<Layer>("cost");
   const [placement, setPlacement] = useState<"start" | "goal">("start");
   const [gridSize, setGridSize] = useState({ cols: COLS, rows: ROWS });
@@ -89,6 +100,9 @@ export default function Home() {
   const [dynamicMotion, setDynamicMotion] = useState<DynamicMotion>("regular");
   const [dynamicSeeds, setDynamicSeeds] = useState<DynamicObstacleSeed[]>(() => defaultDynamicObstacles());
   const [placingDynamic, setPlacingDynamic] = useState(false);
+  const [staticObstacles, setStaticObstacles] = useState<StaticRect[]>(() => STATIC_RECTS.map((rect) => ({ ...rect })));
+  const [draggingStatic, setDraggingStatic] = useState<StaticDrag | null>(null);
+  const [staticMenu, setStaticMenu] = useState<StaticMenu | null>(null);
   const [enabled, setEnabled] = useState<Record<PlannerKey, boolean>>({
     astar: true,
     dijkstra: true,
@@ -101,7 +115,6 @@ export default function Home() {
   const [executing, setExecuting] = useState(false);
   const [executionCursor, setExecutionCursor] = useState(0);
   const [draggingMarker, setDraggingMarker] = useState<"start" | "goal" | null>(null);
-  const [focusedPlanner, setFocusedPlanner] = useState<PlannerKey>("astar");
   const [notice, setNotice] = useState("拖动地图上的起点或终点图标设置位置");
 
   const resultList = useMemo(
@@ -130,8 +143,11 @@ export default function Home() {
     setGoal(points.goal);
     setPlacement("start");
     setDraggingMarker(null);
+    setDraggingStatic(null);
+    setStaticMenu(null);
     setPlacingDynamic(false);
     setDynamicSeeds(defaultDynamicObstacles());
+    setStaticObstacles(STATIC_RECTS.map((rect) => ({ ...rect })));
     setNotice(`地图已调整为 ${next.cols} × ${next.rows}，障碍物与任务点已重新布局`);
   };
 
@@ -173,12 +189,16 @@ export default function Home() {
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
     let frame = 0;
-    let cachedField = makeCostField(dynamicObstaclesAt(performance.now(), dynamicSeeds, dynamicMotion), inflation);
+    let cachedField = makeCostField(
+      dynamicObstaclesAt(performance.now(), dynamicSeeds, dynamicMotion),
+      inflation,
+      staticObstacles,
+    );
     let lastFieldUpdate = 0;
 
     const draw = (now: number) => {
       if (now - lastFieldUpdate > 160) {
-        cachedField = makeCostField(dynamicObstaclesAt(now, dynamicSeeds, dynamicMotion), inflation);
+        cachedField = makeCostField(dynamicObstaclesAt(now, dynamicSeeds, dynamicMotion), inflation, staticObstacles);
         lastFieldUpdate = now;
       }
       const dynamicObstacles = dynamicObstaclesAt(now, dynamicSeeds, dynamicMotion);
@@ -222,9 +242,14 @@ export default function Home() {
       ctx.fillStyle = "#374151";
       ctx.strokeStyle = "#111827";
       ctx.lineWidth = 1.5;
-      STATIC_RECTS.forEach((rect) => {
+      staticObstacles.forEach((rect) => {
         ctx.fillRect(rect.x * CELL, rect.y * CELL, rect.w * CELL, rect.h * CELL);
-        ctx.strokeRect(rect.x * CELL + 1, rect.y * CELL + 1, rect.w * CELL - 2, rect.h * CELL - 2);
+        ctx.strokeRect(
+          rect.x * CELL + 1,
+          rect.y * CELL + 1,
+          Math.max(0, rect.w * CELL - 2),
+          Math.max(0, rect.h * CELL - 2),
+        );
       });
 
       dynamicObstacles.forEach((point, index) => {
@@ -239,18 +264,18 @@ export default function Home() {
         }
         ctx.beginPath();
         ctx.fillStyle = "#1f2937";
-        ctx.arc(pixel.x, pixel.y, 13, 0, Math.PI * 2);
+        ctx.arc(pixel.x, pixel.y, Math.max(4, CELL * 0.54), 0, Math.PI * 2);
         ctx.fill();
         ctx.fillStyle = "#ffffff";
-        ctx.font = "700 9px ui-monospace";
+        ctx.font = `700 ${Math.max(6, Math.min(9, CELL * 0.38))}px ui-monospace`;
         ctx.textAlign = "center";
         ctx.textBaseline = "middle";
         ctx.fillText(`D${index + 1}`, pixel.x, pixel.y + 1);
       });
 
       ctx.strokeStyle = "#334155";
-      ctx.lineWidth = 8;
-      ctx.strokeRect(4, 4, CANVAS_WIDTH - 8, CANVAS_HEIGHT - 8);
+      ctx.lineWidth = Math.max(2, Math.min(8, CELL / 3));
+      ctx.strokeRect(2, 2, CANVAS_WIDTH - 4, CANVAS_HEIGHT - 4);
 
       resultList.forEach((result) => {
         const visible = Math.min(Math.floor(progress), result.steps.length);
@@ -270,7 +295,7 @@ export default function Home() {
           steps.forEach((step) => {
             const pick = pointToCanvas(step.pick);
             ctx.fillStyle = `${color}20`;
-            ctx.fillRect(pick.x - CELL / 2 + 2, pick.y - CELL / 2 + 2, CELL - 4, CELL - 4);
+            ctx.fillRect(pick.x - CELL / 2 + 1, pick.y - CELL / 2 + 1, Math.max(1, CELL - 2), Math.max(1, CELL - 2));
             step.generated.forEach((point) => {
               const generated = pointToCanvas(point);
               ctx.beginPath();
@@ -311,41 +336,43 @@ export default function Home() {
       const drawMarker = (point: Point, color: string, kind: "start" | "goal") => {
         const pixel = pointToCanvas(point);
         const active = draggingMarker === kind;
+        const markerSize = Math.max(5, Math.min(14, CELL * 0.58));
+        const markerScale = markerSize / 14;
         ctx.save();
         ctx.translate(pixel.x, pixel.y);
         if (active) {
           ctx.beginPath();
           ctx.strokeStyle = `${color}88`;
           ctx.lineWidth = 2;
-          ctx.arc(0, 0, 20 + Math.sin(now / 90) * 2, 0, Math.PI * 2);
+          ctx.arc(0, 0, markerSize + 6 + Math.sin(now / 90) * 2, 0, Math.PI * 2);
           ctx.stroke();
         }
         ctx.beginPath();
         ctx.fillStyle = "#ffffff";
         ctx.strokeStyle = color;
         ctx.lineWidth = 3;
-        ctx.arc(0, 0, 14, 0, Math.PI * 2);
+        ctx.arc(0, 0, markerSize, 0, Math.PI * 2);
         ctx.fill();
         ctx.stroke();
         ctx.fillStyle = color;
         ctx.strokeStyle = color;
         if (kind === "start") {
           ctx.beginPath();
-          ctx.moveTo(-4, -7);
-          ctx.lineTo(8, 0);
-          ctx.lineTo(-4, 7);
+          ctx.moveTo(-4 * markerScale, -7 * markerScale);
+          ctx.lineTo(8 * markerScale, 0);
+          ctx.lineTo(-4 * markerScale, 7 * markerScale);
           ctx.closePath();
           ctx.fill();
         } else {
           ctx.lineWidth = 2;
           ctx.beginPath();
-          ctx.moveTo(-5, 8);
-          ctx.lineTo(-5, -8);
+          ctx.moveTo(-5 * markerScale, 8 * markerScale);
+          ctx.lineTo(-5 * markerScale, -8 * markerScale);
           ctx.stroke();
           ctx.beginPath();
-          ctx.moveTo(-4, -7);
-          ctx.lineTo(8, -4);
-          ctx.lineTo(-4, 1);
+          ctx.moveTo(-4 * markerScale, -7 * markerScale);
+          ctx.lineTo(8 * markerScale, -4 * markerScale);
+          ctx.lineTo(-4 * markerScale, 1 * markerScale);
           ctx.closePath();
           ctx.fill();
         }
@@ -375,7 +402,7 @@ export default function Home() {
     };
     frame = window.requestAnimationFrame(draw);
     return () => window.cancelAnimationFrame(frame);
-  }, [draggingMarker, dynamicMotion, dynamicSeeds, executionCursor, executionResult, gridSize, inflation, layer, progress, resultList, start, goal]);
+  }, [draggingMarker, dynamicMotion, dynamicSeeds, executionCursor, executionResult, gridSize, inflation, layer, progress, resultList, start, staticObstacles, goal]);
 
   const plan = () => {
     setPlacingDynamic(false);
@@ -390,7 +417,7 @@ export default function Home() {
       return;
     }
     const snapshot = dynamicObstaclesAt(performance.now(), dynamicSeeds, dynamicMotion);
-    const field = makeCostField(snapshot, inflation);
+    const field = makeCostField(snapshot, inflation, staticObstacles);
     if (field.blocked.has(`${start.x},${start.y}`) || field.blocked.has(`${goal.x},${goal.y}`)) {
       setNotice("起点或终点位于膨胀障碍区，请重新放置");
       return;
@@ -419,7 +446,70 @@ export default function Home() {
     };
   };
 
+  const pointInStaticRect = (point: Point, rect: StaticRect) => (
+    point.x >= rect.x && point.x < rect.x + rect.w && point.y >= rect.y && point.y < rect.y + rect.h
+  );
+
+  const staticRectsOverlap = (a: StaticRect, b: StaticRect) => (
+    a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y
+  );
+
+  const staticRectIsAllowed = (candidate: StaticRect, index: number | null) => {
+    if (pointInStaticRect(start, candidate) || pointInStaticRect(goal, candidate)) return false;
+    return !staticObstacles.some((rect, rectIndex) => rectIndex !== index && staticRectsOverlap(candidate, rect));
+  };
+
+  const openStaticMenu = (event: React.MouseEvent<HTMLCanvasElement>) => {
+    event.preventDefault();
+    const point = pointerGridPosition(event as unknown as React.PointerEvent<HTMLCanvasElement>, true);
+    const index = staticObstacles.findIndex((rect) => pointInStaticRect(point, rect));
+    const rect = index >= 0 ? staticObstacles[index] : { x: point.x, y: point.y, w: 3, h: 3 };
+    const panelBounds = mapPanelRef.current?.getBoundingClientRect();
+    const panelWidth = panelBounds?.width ?? 320;
+    const panelHeight = panelBounds?.height ?? 600;
+    const left = Math.max(8, Math.min(panelWidth - 218, event.clientX - (panelBounds?.left ?? 0)));
+    const top = Math.max(40, Math.min(panelHeight - 164, event.clientY - (panelBounds?.top ?? 0)));
+    setPlacingDynamic(false);
+    setStaticMenu({ left, top, index: index >= 0 ? index : null, point: { x: rect.x, y: rect.y }, width: rect.w, height: rect.h });
+    setNotice(index >= 0 ? "可调整该静态障碍的尺寸、删除或拖动位置" : "设置尺寸后可在此处添加静态障碍");
+  };
+
+  const applyStaticMenu = () => {
+    if (!staticMenu) return;
+    const x = Math.max(1, Math.min(COLS - 2, staticMenu.point.x));
+    const y = Math.max(1, Math.min(ROWS - 2, staticMenu.point.y));
+    const candidate: StaticRect = {
+      x,
+      y,
+      w: Math.max(1, Math.min(COLS - 1 - x, Math.round(staticMenu.width) || 1)),
+      h: Math.max(1, Math.min(ROWS - 1 - y, Math.round(staticMenu.height) || 1)),
+    };
+    if (!staticRectIsAllowed(candidate, staticMenu.index)) {
+      setNotice("静态障碍不能覆盖起终点或与其他静态障碍重叠");
+      return;
+    }
+    clearRun();
+    if (staticMenu.index === null) {
+      setStaticObstacles((current) => [...current, candidate]);
+      setNotice(`已添加 ${candidate.w} × ${candidate.h} 的静态障碍`);
+    } else {
+      setStaticObstacles((current) => current.map((rect, index) => index === staticMenu.index ? candidate : rect));
+      setNotice("静态障碍尺寸已更新");
+    }
+    setStaticMenu(null);
+  };
+
+  const deleteStaticMenuObstacle = () => {
+    if (staticMenu?.index === null || staticMenu === null) return;
+    clearRun();
+    setStaticObstacles((current) => current.filter((_, index) => index !== staticMenu.index));
+    setStaticMenu(null);
+    setNotice("静态障碍已清除");
+  };
+
   const beginMarkerDrag = (event: React.PointerEvent<HTMLCanvasElement>) => {
+    if (event.button !== 0) return;
+    setStaticMenu(null);
     const raw = pointerGridPosition(event, false);
     const startDistance = Math.hypot(raw.x - start.x, raw.y - start.y);
     const goalDistance = Math.hypot(raw.x - goal.x, raw.y - goal.y);
@@ -427,9 +517,20 @@ export default function Home() {
       ? startDistance <= goalDistance ? "start" : "goal"
       : null;
     if (!marker) {
-      if (!placingDynamic) return;
       const point = pointerGridPosition(event, true);
-      const staticField = makeCostField([], inflation);
+      const staticIndex = staticObstacles.findIndex((rect) => pointInStaticRect(point, rect));
+      if (staticIndex >= 0) {
+        const rect = staticObstacles[staticIndex];
+        event.preventDefault();
+        event.currentTarget.setPointerCapture(event.pointerId);
+        clearRun();
+        setPlacingDynamic(false);
+        setDraggingStatic({ index: staticIndex, offsetX: point.x - rect.x, offsetY: point.y - rect.y });
+        setNotice("正在拖动静态障碍，松开后完成移动");
+        return;
+      }
+      if (!placingDynamic) return;
+      const staticField = makeCostField([], inflation, staticObstacles);
       if (staticField.blocked.has(`${point.x},${point.y}`)) {
         setNotice("这里是静态障碍或膨胀区，不能放置动态障碍");
         return;
@@ -457,14 +558,31 @@ export default function Home() {
     clearRun();
     setPlacingDynamic(false);
     setDraggingMarker(marker);
+    setDraggingStatic(null);
     setPlacement(marker);
     setNotice(marker === "start" ? "正在拖动起点图标" : "正在拖动终点图标");
   };
 
   const moveMarker = (event: React.PointerEvent<HTMLCanvasElement>) => {
-    if (!draggingMarker) return;
     const point = pointerGridPosition(event, true);
-    const field = makeCostField(dynamicObstaclesAt(performance.now(), dynamicSeeds, dynamicMotion), inflation);
+    if (draggingStatic) {
+      const current = staticObstacles[draggingStatic.index];
+      if (!current) return;
+      const candidate: StaticRect = {
+        ...current,
+        x: Math.max(1, Math.min(COLS - 1 - current.w, point.x - draggingStatic.offsetX)),
+        y: Math.max(1, Math.min(ROWS - 1 - current.h, point.y - draggingStatic.offsetY)),
+      };
+      if (!staticRectIsAllowed(candidate, draggingStatic.index)) {
+        setNotice("静态障碍不能覆盖起终点或其他静态障碍");
+        return;
+      }
+      setStaticObstacles((currentRects) => currentRects.map((rect, index) => index === draggingStatic.index ? candidate : rect));
+      setNotice("松开以固定静态障碍位置");
+      return;
+    }
+    if (!draggingMarker) return;
+    const field = makeCostField(dynamicObstaclesAt(performance.now(), dynamicSeeds, dynamicMotion), inflation, staticObstacles);
     if (field.blocked.has(`${point.x},${point.y}`)) {
       setNotice("此处是障碍或膨胀区，图标不能放置");
       return;
@@ -483,8 +601,13 @@ export default function Home() {
   };
 
   const endMarkerDrag = (event: React.PointerEvent<HTMLCanvasElement>) => {
-    if (!draggingMarker) return;
+    if (!draggingMarker && !draggingStatic) return;
     if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
+    if (draggingStatic) {
+      setDraggingStatic(null);
+      setNotice("静态障碍已更新，可以启动路径规划");
+      return;
+    }
     const label = draggingMarker === "start" ? "起点" : "终点";
     setDraggingMarker(null);
     setNotice(`${label}已更新，可以启动路径规划`);
@@ -511,28 +634,11 @@ export default function Home() {
 
   const visibleStep = (result: PlannerResult) => result.steps[Math.min(Math.floor(progress), result.steps.length) - 1];
   const enabledPlanners = PLANNER_KEYS.filter((key) => enabled[key]);
-  const activeStatusPlanner = enabled[focusedPlanner] ? focusedPlanner : enabledPlanners[0] ?? focusedPlanner;
-  const statusResult = results[activeStatusPlanner];
-  const statusVisible = statusResult ? Math.min(Math.floor(progress), statusResult.steps.length) : 0;
-  const statusDone = Boolean(statusResult && statusVisible >= statusResult.steps.length);
-  const statusStep = statusResult ? visibleStep(statusResult) : undefined;
-  const statusGenerated = statusResult
-    ? 1 + statusResult.steps.slice(0, statusVisible).reduce((total, step) => total + step.generated.length, 0)
-    : 0;
-  const statusMessage = !statusResult
-    ? "等待启动路径规划"
-    : statusDone
-      ? statusResult.found ? `已找到路径，长度 ${(statusResult.pathLength * 0.25).toFixed(1)}m` : "搜索结束，未找到路径"
-      : statusStep ? `正在检查 ${formatCell(statusStep.pick)}，本步新增 ${statusStep.generated.length} 个候选点` : "正在初始化搜索空间";
 
   const togglePlanner = (key: PlannerKey) => {
     const next = { ...enabled, [key]: !enabled[key] };
     clearRun();
     setEnabled(next);
-    if (!next[focusedPlanner]) {
-      const nextFocus = PLANNER_KEYS.find((planner) => next[planner]);
-      if (nextFocus) setFocusedPlanner(nextFocus);
-    }
   };
 
   return (
@@ -553,7 +659,7 @@ export default function Home() {
       <section className="lab-grid">
         <aside className="control-panel panel">
           <div className="panel-heading primary"><div><p>CONTROL DECK</p><h2>规划控制</h2></div><i className="panel-signal" /></div>
-          <div className="section-label"><span>MAP SIZE</span><b>32–60 列 / 20–40 行</b></div>
+          <div className="section-label"><span>MAP SIZE</span><b>32–240 列 / 20–200 行</b></div>
           <div className="grid-size-control">
             <label>列<input type="number" min={GRID_LIMITS.minCols} max={GRID_LIMITS.maxCols} value={draftCols} onChange={(event) => setDraftCols(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") applyGridSize(); }} aria-label="地图列数" /></label>
             <i>×</i>
@@ -608,29 +714,34 @@ export default function Home() {
             </div>
           </details>
 
-          <div className="planner-status-view">
-            {enabledPlanners.length ? (
-              <>
-                <label className="status-selector">查看状态
-                  <select value={activeStatusPlanner} onChange={(event) => setFocusedPlanner(event.target.value as PlannerKey)}>
-                    {enabledPlanners.map((key) => <option key={key} value={key}>{NAMES[key]}</option>)}
-                  </select>
-                </label>
-                <div className={`telemetry-card compact ${activeStatusPlanner}`}>
-                  <div className="telemetry-title"><p>{NAMES[activeStatusPlanner]}</p><strong>{!statusResult ? "" : statusDone ? statusResult.found ? "已完成" : "无路径" : "计算中"}</strong></div>
-                  <div className="algorithm-formula"><span>核心规则</span><b>{FORMULAS[activeStatusPlanner]}</b></div>
+          <div className="planner-status-view multi">
+            {enabledPlanners.length ? enabledPlanners.map((key) => {
+              const result = results[key];
+              const visible = result ? Math.min(Math.floor(progress), result.steps.length) : 0;
+              const done = Boolean(result && visible >= result.steps.length);
+              const step = result ? visibleStep(result) : undefined;
+              const generated = result ? 1 + result.steps.slice(0, visible).reduce((total, item) => total + item.generated.length, 0) : 0;
+              const message = !result
+                ? "等待启动路径规划"
+                : done
+                  ? result.found ? `已找到路径，长度 ${(result.pathLength * 0.25).toFixed(1)}m` : "搜索结束，未找到路径"
+                  : step ? `正在检查 ${formatCell(step.pick)}，本步新增 ${step.generated.length} 个候选点` : "正在初始化搜索空间";
+              return (
+                <div key={key} className={`telemetry-card compact ${key}`}>
+                  <div className="telemetry-title"><p>{NAMES[key]}</p><strong>{!result ? "" : done ? result.found ? "已完成" : "无路径" : "计算中"}</strong></div>
+                  <div className="algorithm-formula"><span>核心规则</span><b>{FORMULAS[key]}</b></div>
                   <dl>
-                    <div><dt>扩展</dt><dd>{statusVisible}</dd></div>
-                    <div><dt>生成</dt><dd>{statusGenerated}</dd></div>
-                    <div><dt>待选</dt><dd>{statusStep?.open ?? 0}</dd></div>
-                    <div><dt>已检</dt><dd>{statusStep?.closed ?? 0}</dd></div>
-                    <div><dt>耗时</dt><dd>{statusResult ? `${statusResult.durationMs.toFixed(1)}ms` : "—"}</dd></div>
-                    <div><dt>路径</dt><dd>{statusDone && statusResult?.found ? `${(statusResult.pathLength * 0.25).toFixed(1)}m` : "—"}</dd></div>
+                    <div><dt>扩展</dt><dd>{visible}</dd></div>
+                    <div><dt>生成</dt><dd>{generated}</dd></div>
+                    <div><dt>待选</dt><dd>{step?.open ?? 0}</dd></div>
+                    <div><dt>已检</dt><dd>{step?.closed ?? 0}</dd></div>
+                    <div><dt>耗时</dt><dd>{result ? `${result.durationMs.toFixed(1)}ms` : "—"}</dd></div>
+                    <div><dt>路径</dt><dd>{done && result?.found ? `${(result.pathLength * 0.25).toFixed(1)}m` : "—"}</dd></div>
                   </dl>
-                  <p className="status-explanation">{statusMessage}</p>
+                  <p className="status-explanation">{message}</p>
                 </div>
-              </>
-            ) : <p className="empty-planner-status">请从上方下拉框勾选至少一种算法</p>}
+              );
+            }) : <p className="empty-planner-status">请从上方下拉框勾选至少一种算法</p>}
           </div>
 
           <label className="range-control speed-control">
@@ -643,22 +754,32 @@ export default function Home() {
           </button>
         </aside>
 
-        <section className="map-panel panel">
+        <section className="map-panel panel" ref={mapPanelRef}>
           <div className="map-toolbar">
             <div><span className="pulse" /> PLANNING WORLD <i>/</i> {layer.toUpperCase()}</div>
-            <p className={running ? "is-running" : ""}>{running ? `SEARCH ${Math.round((progress / Math.max(maxSteps, 1)) * 100)}%` : executing ? "ROBOT EXECUTING" : placingDynamic ? "ADD DYNAMIC OBSTACLE" : draggingMarker ? `DRAG ${draggingMarker.toUpperCase()}` : "DRAG MARKERS"}</p>
+            <p className={running ? "is-running" : ""}>{running ? `SEARCH ${Math.round((progress / Math.max(maxSteps, 1)) * 100)}%` : executing ? "ROBOT EXECUTING" : placingDynamic ? "ADD DYNAMIC OBSTACLE" : draggingStatic ? "DRAG STATIC OBSTACLE" : draggingMarker ? `DRAG ${draggingMarker.toUpperCase()}` : "DRAG MARKERS"}</p>
           </div>
           <canvas
             ref={canvasRef}
-            className={placingDynamic ? "is-placing-dynamic" : draggingMarker ? "is-dragging" : ""}
+            className={placingDynamic ? "is-placing-dynamic" : draggingMarker || draggingStatic ? "is-dragging" : ""}
             width={CANVAS_WIDTH}
             height={CANVAS_HEIGHT}
             onPointerDown={beginMarkerDrag}
             onPointerMove={moveMarker}
             onPointerUp={endMarkerDrag}
             onPointerCancel={endMarkerDrag}
-            aria-label="交互式路径规划地图，可拖动起终点或点击放置动态障碍"
+            onContextMenu={openStaticMenu}
+            aria-label="交互式路径规划地图，可拖动起终点和静态障碍，右键编辑或添加静态障碍"
           />
+          {staticMenu && (
+            <div className="static-menu" style={{ left: staticMenu.left, top: staticMenu.top }} onPointerDown={(event) => event.stopPropagation()}>
+              <div><b>{staticMenu.index === null ? "添加静态障碍" : "编辑静态障碍"}</b><button type="button" onClick={() => setStaticMenu(null)} aria-label="关闭静态障碍菜单">×</button></div>
+              <p>位置 {formatCell(staticMenu.point)}</p>
+              <label>宽度<input type="number" min="1" max={Math.max(1, COLS - 1 - staticMenu.point.x)} value={staticMenu.width} onChange={(event) => setStaticMenu((current) => current ? { ...current, width: Number(event.target.value) } : current)} /></label>
+              <label>高度<input type="number" min="1" max={Math.max(1, ROWS - 1 - staticMenu.point.y)} value={staticMenu.height} onChange={(event) => setStaticMenu((current) => current ? { ...current, height: Number(event.target.value) } : current)} /></label>
+              <div className="static-menu-actions"><button type="button" onClick={applyStaticMenu}>{staticMenu.index === null ? "添加" : "保存"}</button>{staticMenu.index !== null && <button type="button" className="delete" onClick={deleteStaticMenuObstacle}>清除</button>}</div>
+            </div>
+          )}
           <div className={`timeline-control ${resultList.length ? "" : "disabled"}`}>
             <span>REPLAY</span>
             <div className="timeline-range">

@@ -132,6 +132,14 @@ button { color: inherit; }
 .planner-picker > .algorithm-list { display: none; position: absolute; top: calc(100% + 4px); left: 0; right: 0; margin: 0; padding: 7px; border: 1px solid var(--line); background: #0a151a; box-shadow: 0 12px 28px rgba(0,0,0,.38); }
 .planner-picker[open] > .algorithm-list { display: grid; }
 .planner-status-view { margin-top: 7px; }
+.planner-status-view.multi { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 5px; }
+.planner-status-view.multi .telemetry-card { min-width: 0; margin-top: 0; }
+.planner-status-view.multi .telemetry-title p { font-size: 9px; letter-spacing: .06em; }
+.planner-status-view.multi .algorithm-formula b { overflow: hidden; font-size: 8px; text-overflow: ellipsis; }
+.planner-status-view.multi .telemetry-card.compact { padding: 6px; }
+.planner-status-view.multi .telemetry-card.compact .algorithm-formula { padding: 4px 5px; }
+.planner-status-view.multi .telemetry-card.compact dl { grid-template-columns: 1fr; gap: 0; }
+.planner-status-view.multi .telemetry-card .status-explanation { display: none; }
 .status-selector { display: grid; grid-template-columns: auto 1fr; align-items: center; gap: 8px; color: var(--muted); font-size: 8px; }
 .status-selector select { width: 100%; height: 27px; border: 1px solid var(--line); outline: 0; background: #081216; color: var(--ink); padding: 0 7px; font: 800 9px ui-monospace, monospace; }
 .status-selector select:focus { border-color: var(--cyan); }
@@ -146,7 +154,7 @@ button { color: inherit; }
 .run-button:hover { background: #a4ffe1; }
 .run-button span { font-size: 16px; line-height: 1; }
 
-.map-panel { display: grid; grid-template-rows: 38px minmax(0, 1fr) 38px 38px; overflow: hidden; background: #f8fafc; }
+.map-panel { position: relative; display: grid; grid-template-rows: 38px minmax(0, 1fr) 38px 38px; overflow: hidden; background: #f8fafc; }
 .map-toolbar { min-width: 0; display: flex; align-items: center; justify-content: space-between; padding: 0 14px; border-bottom: 1px solid var(--line); color: var(--muted); font: 700 9px ui-monospace, monospace; letter-spacing: .1em; }
 .map-toolbar div { color: var(--ink); white-space: nowrap; }
 .map-toolbar i { color: var(--muted); font-style: normal; margin: 0 6px; }
@@ -156,6 +164,17 @@ button { color: inherit; }
 .map-panel canvas { width: 100%; height: 100%; display: block; cursor: grab; touch-action: none; }
 .map-panel canvas.is-dragging { cursor: grabbing; }
 .map-panel canvas.is-placing-dynamic { cursor: crosshair; }
+.static-menu { position: absolute; z-index: 30; width: 210px; padding: 10px; border: 1px solid rgba(0,191,255,.72); background: #081216; box-shadow: 0 15px 36px rgba(0,0,0,.42); color: var(--ink); }
+.static-menu > div:first-child { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.static-menu > div:first-child b { color: var(--cyan); font: 800 10px ui-monospace, monospace; letter-spacing: .08em; }
+.static-menu > div:first-child button { width: 20px; height: 20px; padding: 0; border: 1px solid var(--line); background: transparent; color: var(--muted); cursor: pointer; }
+.static-menu p { margin: 7px 0; color: var(--muted); font: 8px ui-monospace, monospace; }
+.static-menu label { display: grid; grid-template-columns: 32px 1fr; align-items: center; gap: 7px; margin-top: 5px; color: var(--muted); font-size: 9px; }
+.static-menu input { width: 100%; height: 25px; border: 1px solid var(--line); outline: none; background: #050d10; color: var(--ink); padding: 0 6px; font: 800 10px ui-monospace, monospace; }
+.static-menu input:focus { border-color: var(--cyan); }
+.static-menu-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 5px; margin-top: 9px; }
+.static-menu-actions button { min-height: 27px; border: 1px solid rgba(0,191,255,.62); background: rgba(0,191,255,.1); color: var(--cyan); font-size: 9px; font-weight: 800; cursor: pointer; }
+.static-menu-actions button.delete { border-color: rgba(255,75,75,.7); background: rgba(255,75,75,.09); color: var(--pink); }
 .timeline-control { min-width: 0; display: grid; grid-template-columns: 44px minmax(0, 1fr) 34px; align-items: center; gap: 9px; padding: 0 13px; border-top: 1px solid var(--line); background: rgba(8, 18, 24, .98); }
 .timeline-control > span { color: var(--cyan); font: 800 8px ui-monospace, monospace; letter-spacing: .1em; }
 .timeline-control > b { color: var(--green); text-align: right; font: 800 9px ui-monospace, monospace; }

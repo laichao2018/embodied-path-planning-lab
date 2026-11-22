@@ -452,7 +452,7 @@ export default function Home() {
             return (
               <div key={key} className={`telemetry-card ${key}`}>
                 <div className="telemetry-title"><p>{NAMES[key]}</p><span style={{ background: COLORS[key] }} /></div>
-                <strong>{!enabled[key] ? "OFF" : !result ? "READY" : done ? result.found ? "PATH" : "FAIL" : "SEARCH"}</strong>
+                <strong>{!enabled[key] ? "OFF" : !result ? "" : done ? result.found ? "PATH" : "FAIL" : "SEARCH"}</strong>
                 <small>{DESCRIPTIONS[key]}</small>
                 <dl>
                   <div><dt>PICK</dt><dd>{visible}</dd></div>

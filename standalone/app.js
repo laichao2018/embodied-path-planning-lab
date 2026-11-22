@@ -399,7 +399,7 @@
       card.querySelector("strong").textContent = !state.enabled[planner]
         ? "OFF"
         : !result
-          ? "READY"
+          ? ""
           : done
             ? result.found ? "PATH" : "FAIL"
             : "SEARCH";

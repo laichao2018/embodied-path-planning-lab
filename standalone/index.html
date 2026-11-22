@@ -20,7 +20,7 @@
           <span>PLANNERS <b>03</b></span>
           <span>OBSTACLES <b>LIVE</b></span>
         </div>
-        <div class="status-strip"><span class="live-dot"></span> LOCAL RUNTIME <b>READY</b></div>
+        <div class="status-strip"><span class="live-dot"></span> LOCAL RUNTIME <b>OFFLINE</b></div>
       </header>
 
       <section class="lab-grid">
@@ -79,15 +79,15 @@
         <aside class="telemetry-panel panel">
           <div class="panel-heading primary"><div><p>LIVE METRICS</p><h2>搜索状态</h2></div><i class="panel-signal"></i></div>
           <div class="telemetry-card astar" data-card="astar">
-            <div class="telemetry-title"><p>A*</p><span></span></div><strong>READY</strong><small>f = g + h / 目标导向</small>
+            <div class="telemetry-title"><p>A*</p><span></span></div><strong></strong><small>f = g + h / 目标导向</small>
             <dl><div><dt>PICK</dt><dd data-pick>0</dd></div><div><dt>GENERATE</dt><dd data-generated>0</dd></div><div><dt>OPEN</dt><dd data-open>0</dd></div><div><dt>CLOSED</dt><dd data-closed>0</dd></div><div><dt>TIME</dt><dd data-time>—</dd></div><div><dt>PATH</dt><dd data-path>—</dd></div></dl>
           </div>
           <div class="telemetry-card dijkstra" data-card="dijkstra">
-            <div class="telemetry-title"><p>DIJKSTRA</p><span></span></div><strong>READY</strong><small>priority = g / 等代价扩展</small>
+            <div class="telemetry-title"><p>DIJKSTRA</p><span></span></div><strong></strong><small>priority = g / 等代价扩展</small>
             <dl><div><dt>PICK</dt><dd data-pick>0</dd></div><div><dt>GENERATE</dt><dd data-generated>0</dd></div><div><dt>OPEN</dt><dd data-open>0</dd></div><div><dt>CLOSED</dt><dd data-closed>0</dd></div><div><dt>TIME</dt><dd data-time>—</dd></div><div><dt>PATH</dt><dd data-path>—</dd></div></dl>
           </div>
           <div class="telemetry-card rrt" data-card="rrt">
-            <div class="telemetry-title"><p>RRT</p><span></span></div><strong>READY</strong><small>sample + steer / 树生长</small>
+            <div class="telemetry-title"><p>RRT</p><span></span></div><strong></strong><small>sample + steer / 树生长</small>
             <dl><div><dt>PICK</dt><dd data-pick>0</dd></div><div><dt>GENERATE</dt><dd data-generated>0</dd></div><div><dt>OPEN</dt><dd data-open>0</dd></div><div><dt>CLOSED</dt><dd data-closed>0</dd></div><div><dt>TIME</dt><dd data-time>—</dd></div><div><dt>PATH</dt><dd data-path>—</dd></div></dl>
           </div>
           <div class="event-log"><p>EVENT STREAM</p><div id="events"><span><b>00</b> 等待规划任务</span><span><b>01</b> 代价地图已就绪</span><span><b>02</b> 动态感知运行中</span></div></div>

@@ -990,18 +990,22 @@
       });
     }
 
-    ctx.strokeStyle = "rgba(71, 85, 105, .14)";
+    // Align one-pixel solid grid strokes to the device pixel grid so cells stay sharp.
+    ctx.setLineDash([]);
+    ctx.strokeStyle = "rgba(100, 116, 139, .52)";
     ctx.lineWidth = 1;
     for (let x = 0; x <= WIDTH; x += CELL) {
+      const position = x === WIDTH ? x - 0.5 : x + 0.5;
       ctx.beginPath();
-      ctx.moveTo(x, 0);
-      ctx.lineTo(x, HEIGHT);
+      ctx.moveTo(position, 0);
+      ctx.lineTo(position, HEIGHT);
       ctx.stroke();
     }
     for (let y = 0; y <= HEIGHT; y += CELL) {
+      const position = y === HEIGHT ? y - 0.5 : y + 0.5;
       ctx.beginPath();
-      ctx.moveTo(0, y);
-      ctx.lineTo(WIDTH, y);
+      ctx.moveTo(0, position);
+      ctx.lineTo(WIDTH, position);
       ctx.stroke();
     }
 
@@ -1041,8 +1045,11 @@
       const color = COLORS[result.key];
       const steps = result.steps.slice(0, visible);
       if (result.key === "rrt" || result.key === "rrtstar") {
-        ctx.lineWidth = 1.15;
-        ctx.strokeStyle = `${color}99`;
+        ctx.save();
+        ctx.setLineDash([5, 5]);
+        ctx.lineWidth = 1.2;
+        ctx.strokeStyle = `${color}c9`;
+        ctx.lineCap = "butt";
         steps.forEach((step) => {
           if (!step.edge) return;
           const a = pointToCanvas(step.edge[0]);
@@ -1052,6 +1059,7 @@
           ctx.lineTo(b.x, b.y);
           ctx.stroke();
         });
+        ctx.restore();
       } else {
         steps.forEach((step) => {
           const pick = pointToCanvas(step.pick);
@@ -1076,6 +1084,8 @@
         ctx.stroke();
       }
       if (visible >= result.steps.length && result.path.length) {
+        ctx.save();
+        ctx.setLineDash([]);
         ctx.beginPath();
         result.path.forEach((point, index) => {
           const pixel = pointToCanvas(point);
@@ -1083,12 +1093,12 @@
           else ctx.lineTo(pixel.x, pixel.y);
         });
         ctx.strokeStyle = color;
-        ctx.lineWidth = result.key === "astar" ? 4 : 2.5;
-        ctx.globalAlpha = result.key === "astar" ? 1 : 0.86;
+        ctx.lineWidth = Math.max(3.5, Math.min(5.5, CELL * 0.22));
+        ctx.globalAlpha = 1;
         ctx.lineJoin = "round";
         ctx.lineCap = "round";
         ctx.stroke();
-        ctx.globalAlpha = 1;
+        ctx.restore();
       }
     });
 

@@ -118,6 +118,7 @@
     closeStaticMenu: document.getElementById("close-static-menu"),
     dwaState: document.getElementById("dwa-state"),
     dwaSafe: document.getElementById("dwa-safe"),
+    dwaSource: document.getElementById("dwa-source"),
     dwaVelocity: document.getElementById("dwa-velocity"),
     dwaYaw: document.getElementById("dwa-yaw"),
     dwaTarget: document.getElementById("dwa-target"),
@@ -597,12 +598,12 @@
         y += Math.sin(heading) * velocity * controlDt;
         const cellX = Math.round(x);
         const cellY = Math.round(y);
+        path.push({ x, y });
         if (cellX < 1 || cellY < 1 || cellX >= COLS - 1 || cellY >= ROWS - 1 || field.blocked.has(`${cellX},${cellY}`)) {
           safe = false;
           break;
         }
         minCost = Math.min(minCost, field.costs[cellY][cellX]);
-        path.push({ x, y });
       }
       const finalPoint = path[path.length - 1] || { x: pose.x, y: pose.y };
       const targetHeading = Math.atan2(target.y - finalPoint.y, target.x - finalPoint.x);
@@ -654,6 +655,11 @@
     return Math.max(0, ...resultList().map((result) => result.steps.length));
   }
 
+  function preferredExecutionResult() {
+    return [state.results.astar, state.results.dijkstra, state.results.rrtstar, state.results.rrt]
+      .find((result) => result && result.path.length) || null;
+  }
+
   function clearRun() {
     state.results = {};
     state.progress = 0;
@@ -693,6 +699,8 @@
     const safeCandidates = dwa ? dwa.candidates.filter((candidate) => candidate.safe).length : 0;
     elements.dwaState.textContent = !dwa ? "待命" : dwa.status === "tracking" ? "局部绕障中" : dwa.status === "waiting" ? "等待安全窗口" : "已抵达";
     elements.dwaSafe.textContent = `${safeCandidates}/${dwa ? dwa.candidates.length : 20}`;
+    const executionResult = preferredExecutionResult();
+    elements.dwaSource.textContent = executionResult ? NAMES[executionResult.key] : "—";
     elements.dwaVelocity.textContent = dwa ? `${dwa.pose.velocity.toFixed(1)} c/s` : "—";
     elements.dwaYaw.textContent = dwa ? `${dwa.pose.yawRate.toFixed(2)} rad/s` : "—";
     elements.dwaTarget.textContent = dwa ? formatCell(dwa.target) : "—";
@@ -1207,7 +1215,7 @@
       }
     });
 
-    const executionResult = state.results.astar || state.results.dijkstra || state.results.rrt || state.results.rrtstar;
+    const executionResult = preferredExecutionResult();
     if (state.dwa && executionResult && executionResult.path.length && state.progress >= maxSteps()) {
       function drawLocalPolyline(points, color, width, dash = []) {
         if (points.length < 2) return;
@@ -1225,14 +1233,45 @@
       ctx.save();
       ctx.lineCap = "round";
       ctx.lineJoin = "round";
-      state.dwa.candidates.filter((candidate) => candidate.safe).forEach((candidate) => {
-        drawLocalPolyline(candidate.path, "rgba(20, 184, 166, .2)", 1, [3, 4]);
+      function drawLocalEndpoint(point, color, radius, crossed = false) {
+        if (!point) return;
+        const pixel = pointToCanvas(point);
+        ctx.setLineDash([]);
+        ctx.strokeStyle = color;
+        ctx.fillStyle = color;
+        ctx.lineWidth = 1.2;
+        if (crossed) {
+          ctx.beginPath();
+          ctx.moveTo(pixel.x - radius, pixel.y - radius);
+          ctx.lineTo(pixel.x + radius, pixel.y + radius);
+          ctx.moveTo(pixel.x + radius, pixel.y - radius);
+          ctx.lineTo(pixel.x - radius, pixel.y + radius);
+          ctx.stroke();
+        } else {
+          ctx.beginPath();
+          ctx.arc(pixel.x, pixel.y, radius, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      }
+      const origin = state.dwa.pose;
+      state.dwa.candidates.filter((candidate) => !candidate.safe).forEach((candidate) => {
+        drawLocalPolyline([origin, ...candidate.path], "rgba(239, 68, 68, .58)", Math.max(1, CELL * 0.14), [2, 4]);
+        drawLocalEndpoint(candidate.path[candidate.path.length - 1], "rgba(220, 38, 38, .82)", Math.max(1.8, CELL * 0.22), true);
       });
-      if (state.dwa.chosen) drawLocalPolyline(state.dwa.chosen.path, "#14b8a6", 2.3);
-      drawLocalPolyline(state.dwa.trail, "#0f766e", 2.8);
+      state.dwa.candidates.filter((candidate) => candidate.safe && candidate !== state.dwa.chosen).forEach((candidate) => {
+        drawLocalPolyline([origin, ...candidate.path], "rgba(8, 145, 178, .68)", Math.max(1.15, CELL * 0.16), [5, 4]);
+        drawLocalEndpoint(candidate.path[candidate.path.length - 1], "rgba(8, 145, 178, .78)", Math.max(1.2, CELL * 0.14));
+      });
+      drawLocalPolyline(state.dwa.trail, "#047857", Math.max(3, CELL * 0.4));
+      if (state.dwa.chosen) {
+        const chosenPath = [origin, ...state.dwa.chosen.path];
+        drawLocalPolyline(chosenPath, "rgba(255, 255, 255, .95)", Math.max(5, CELL * 0.68));
+        drawLocalPolyline(chosenPath, "#00c98d", Math.max(3.2, CELL * 0.44));
+        drawLocalEndpoint(state.dwa.chosen.path[state.dwa.chosen.path.length - 1], "#00c98d", Math.max(2.4, CELL * 0.3));
+      }
       const target = pointToCanvas(state.dwa.target);
-      ctx.setLineDash([2, 3]);
-      ctx.strokeStyle = "#14b8a6";
+      ctx.setLineDash([3, 3]);
+      ctx.strokeStyle = "#0891b2";
       ctx.lineWidth = 1.5;
       ctx.beginPath();
       ctx.arc(target.x, target.y, Math.max(5, CELL * 0.72), 0, Math.PI * 2);
@@ -1403,7 +1442,7 @@
   let dwaAccumulator = 0;
 
   function advanceDwa() {
-    const executionResult = state.results.astar || state.results.dijkstra || state.results.rrt || state.results.rrtstar;
+    const executionResult = preferredExecutionResult();
     if (!executionResult || !executionResult.path.length) {
       state.executing = false;
       return;
@@ -1454,12 +1493,12 @@
         state.progress = Math.min(maxSteps(), state.progress + increments * state.speed);
         if (state.progress >= maxSteps()) {
           state.running = false;
-          const executionResult = state.results.astar || state.results.dijkstra || state.results.rrt || state.results.rrtstar;
+          const executionResult = preferredExecutionResult();
           if (executionResult && executionResult.path.length) {
             state.executing = true;
             state.dwa = createDwaRun(executionResult.path);
             dwaAccumulator = 0;
-            setNotice("全局路径已生成，DWA 局部规划开始跟踪并实时绕障");
+            setNotice(`全局路径已生成，DWA 开始跟随 ${NAMES[executionResult.key]} 路线并实时绕障`);
           } else {
             setNotice("搜索结束：当前地图未找到可执行路径");
           }

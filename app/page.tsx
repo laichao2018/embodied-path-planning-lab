@@ -155,7 +155,11 @@ export default function Home() {
     [results],
   );
   const maxSteps = Math.max(0, ...resultList.map((result) => result.steps.length));
-  const executionResult = results.astar ?? results.dijkstra ?? results.rrt ?? results.rrtstar;
+  const executionResult = useMemo(
+    () => [results.astar, results.dijkstra, results.rrtstar, results.rrt]
+      .find((result): result is PlannerResult => Boolean(result?.path.length)),
+    [results],
+  );
 
   const clearRun = () => {
     setResults({});
@@ -196,9 +200,14 @@ export default function Home() {
   useEffect(() => {
     if (!running || maxSteps === 0 || progress < maxSteps) return;
     setRunning(false);
+    if (!executionResult) {
+      setExecuting(false);
+      setNotice("搜索结束：当前地图未找到可执行路径");
+      return;
+    }
     setExecuting(true);
-    setNotice("全局路径已生成，DWA 局部规划开始跟踪并实时绕障");
-  }, [maxSteps, progress, running]);
+    setNotice(`全局路径已生成，DWA 开始跟随 ${NAMES[executionResult.key]} 路线并实时绕障`);
+  }, [executionResult, maxSteps, progress, running]);
 
   useEffect(() => {
     if (!executing || !executionResult?.path.length) return;
@@ -428,14 +437,45 @@ export default function Home() {
         ctx.save();
         ctx.lineCap = "round";
         ctx.lineJoin = "round";
-        dwaState.candidates.filter((candidate) => candidate.safe).forEach((candidate) => {
-          drawPolyline(candidate.path, "rgba(20, 184, 166, .2)", 1, [3, 4]);
+        const drawEndpoint = (point: Point | undefined, color: string, radius: number, crossed = false) => {
+          if (!point) return;
+          const pixel = pointToCanvas(point);
+          ctx.setLineDash([]);
+          ctx.strokeStyle = color;
+          ctx.fillStyle = color;
+          ctx.lineWidth = 1.2;
+          if (crossed) {
+            ctx.beginPath();
+            ctx.moveTo(pixel.x - radius, pixel.y - radius);
+            ctx.lineTo(pixel.x + radius, pixel.y + radius);
+            ctx.moveTo(pixel.x + radius, pixel.y - radius);
+            ctx.lineTo(pixel.x - radius, pixel.y + radius);
+            ctx.stroke();
+          } else {
+            ctx.beginPath();
+            ctx.arc(pixel.x, pixel.y, radius, 0, Math.PI * 2);
+            ctx.fill();
+          }
+        };
+        const origin = dwaState.pose;
+        dwaState.candidates.filter((candidate) => !candidate.safe).forEach((candidate) => {
+          drawPolyline([origin, ...candidate.path], "rgba(239, 68, 68, .58)", Math.max(1, CELL * 0.14), [2, 4]);
+          drawEndpoint(candidate.path.at(-1), "rgba(220, 38, 38, .82)", Math.max(1.8, CELL * 0.22), true);
         });
-        if (dwaState.chosen) drawPolyline(dwaState.chosen.path, "#14b8a6", 2.3);
-        drawPolyline(dwaState.trail, "#0f766e", 2.8);
+        dwaState.candidates.filter((candidate) => candidate.safe && candidate !== dwaState.chosen).forEach((candidate) => {
+          drawPolyline([origin, ...candidate.path], "rgba(8, 145, 178, .68)", Math.max(1.15, CELL * 0.16), [5, 4]);
+          drawEndpoint(candidate.path.at(-1), "rgba(8, 145, 178, .78)", Math.max(1.2, CELL * 0.14));
+        });
+        drawPolyline(dwaState.trail, "#047857", Math.max(3, CELL * 0.4));
+        if (dwaState.chosen) {
+          const chosenPath = [origin, ...dwaState.chosen.path];
+          drawPolyline(chosenPath, "rgba(255, 255, 255, .95)", Math.max(5, CELL * 0.68));
+          drawPolyline(chosenPath, "#00c98d", Math.max(3.2, CELL * 0.44));
+          drawEndpoint(dwaState.chosen.path.at(-1), "#00c98d", Math.max(2.4, CELL * 0.3));
+        }
         const target = pointToCanvas(dwaState.target);
-        ctx.setLineDash([2, 3]);
-        ctx.strokeStyle = "#14b8a6";
+        ctx.setLineDash([3, 3]);
+        ctx.strokeStyle = "#0891b2";
         ctx.lineWidth = 1.5;
         ctx.beginPath(); ctx.arc(target.x, target.y, Math.max(5, CELL * 0.72), 0, Math.PI * 2); ctx.stroke();
         ctx.restore();
@@ -810,11 +850,14 @@ export default function Home() {
             <div className="dwa-title"><p><i /> DWA 局部避障</p><strong>{dwaLabel}</strong></div>
             <dl>
               <div><dt>安全候选</dt><dd>{dwaSafeCount}/{dwaState?.candidates.length ?? 20}</dd></div>
+              <div><dt>跟随全局</dt><dd>{executionResult ? NAMES[executionResult.key] : "—"}</dd></div>
               <div><dt>线速度</dt><dd>{dwaState ? `${dwaState.pose.velocity.toFixed(1)} c/s` : "—"}</dd></div>
               <div><dt>角速度</dt><dd>{dwaState ? `${dwaState.pose.yawRate.toFixed(2)} rad/s` : "—"}</dd></div>
               <div><dt>目标点</dt><dd>{dwaState ? formatCell(dwaState.target) : "—"}</dd></div>
             </dl>
-            <p>评估速度窗口与预测轨迹，避开静态、动态及膨胀障碍。</p>
+            <div className="dwa-flow" aria-label="DWA 轨迹选择流程">
+              <span>速度采样</span><i>→</i><span>碰撞筛选</span><i>→</i><span>评分选优</span>
+            </div>
           </div>
 
           <div className="section-label"><span>MISSION</span><b>拖拽任务点</b></div>
@@ -926,7 +969,9 @@ export default function Home() {
             <span><i className="dynamic" />动态障碍</span>
             <span><i className="inflated" />膨胀与代价</span>
             <span><i className="pick-ring" />当前扩展节点</span>
-            <span><i className="dwa" />DWA 候选 / 局部轨迹</span>
+            <span><i className="dwa-safe" />DWA 安全候选</span>
+            <span><i className="dwa-rejected" />淘汰轨迹</span>
+            <span><i className="dwa-selected" />选中 / 已行驶</span>
             <span className="legend-note">{notice}</span>
           </div>
         </section>

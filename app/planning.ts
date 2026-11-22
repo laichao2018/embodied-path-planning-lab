@@ -593,6 +593,7 @@ export function planDwaStep(
       const cellX = Math.round(x);
       const cellY = Math.round(y);
       const key = `${cellX},${cellY}`;
+      path.push({ x, y });
       if (
         cellX < 1 || cellY < 1 || cellX >= COLS - 1 || cellY >= ROWS - 1 ||
         field.blocked.has(key)
@@ -601,7 +602,6 @@ export function planDwaStep(
         break;
       }
       minCost = Math.min(minCost, field.costs[cellY][cellX]);
-      path.push({ x, y });
     }
     const finalPoint = path.at(-1) ?? { x: pose.x, y: pose.y };
     const targetHeading = Math.atan2(target.y - finalPoint.y, target.x - finalPoint.x);

@@ -60,11 +60,14 @@
             <div class="dwa-title"><p><i></i> DWA 局部避障</p><strong id="dwa-state">待命</strong></div>
             <dl>
               <div><dt>安全候选</dt><dd id="dwa-safe">0/20</dd></div>
+              <div><dt>跟随全局</dt><dd id="dwa-source">—</dd></div>
               <div><dt>线速度</dt><dd id="dwa-velocity">—</dd></div>
               <div><dt>角速度</dt><dd id="dwa-yaw">—</dd></div>
               <div><dt>目标点</dt><dd id="dwa-target">—</dd></div>
             </dl>
-            <p>评估速度窗口与预测轨迹，避开静态、动态及膨胀障碍。</p>
+            <div class="dwa-flow" aria-label="DWA 轨迹选择流程">
+              <span>速度采样</span><i>→</i><span>碰撞筛选</span><i>→</i><span>评分选优</span>
+            </div>
           </div>
 
           <div class="section-label"><span>MISSION</span><b>拖拽任务点</b></div>
@@ -136,7 +139,9 @@
             <span><i class="dynamic"></i>动态障碍</span>
             <span><i class="inflated"></i>膨胀与代价</span>
             <span><i class="pick-ring"></i>当前扩展节点</span>
-            <span><i class="dwa"></i>DWA 候选 / 局部轨迹</span>
+            <span><i class="dwa-safe"></i>DWA 安全候选</span>
+            <span><i class="dwa-rejected"></i>淘汰轨迹</span>
+            <span><i class="dwa-selected"></i>选中 / 已行驶</span>
             <span class="legend-note" id="notice">拖动地图上的起点或终点图标设置位置</span>
           </div>
         </section>

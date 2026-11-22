@@ -10,6 +10,7 @@ import {
   defaultDynamicObstacles,
   dynamicObstaclesAt,
   makeCostField,
+  planDwaStep,
   runPlanner,
   type PlannerKey,
   type Point,
@@ -126,4 +127,24 @@ test("maximum 240 by 200 grid keeps a bounded render surface and cost field", ()
   } finally {
     configureGrid(35, 24);
   }
+});
+
+test("DWA samples safe local trajectories along a global route", () => {
+  const start = { x: 3, y: 20 };
+  const goal = { x: 32, y: 3 };
+  const field = makeCostField(dynamicObstaclesAt(1_000), 1.45);
+  const global = runPlanner("astar", start, goal, field);
+  const next = global.path[1];
+  const pose = {
+    ...start,
+    heading: Math.atan2(next.y - start.y, next.x - start.x),
+    velocity: 2.4,
+    yawRate: 0,
+  };
+  const plan = planDwaStep(pose, global.path, field);
+
+  assert.equal(plan.candidates.length, 20);
+  assert.ok(plan.best?.safe);
+  assert.ok(plan.best?.path.length);
+  assertPathIsCollisionFree([start, ...(plan.best?.path ?? [])], field.blocked);
 });

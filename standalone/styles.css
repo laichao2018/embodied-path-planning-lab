@@ -96,6 +96,20 @@ button { color: inherit; }
 .dynamic-actions button { min-height: 27px; border: 1px solid var(--line); background: #081216; color: var(--muted); font-size: 9px; cursor: pointer; }
 .dynamic-actions button:hover, .dynamic-actions button.active { border-color: var(--cyan); color: var(--cyan); background: rgba(0,191,255,.08); }
 
+.dwa-card { margin-top: 8px; padding: 7px 8px; border: 1px solid rgba(20,184,166,.42); border-left: 4px solid #14b8a6; background: linear-gradient(90deg, rgba(20,184,166,.11), rgba(255,255,255,.008) 62%); }
+.dwa-title { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.dwa-title p, .dwa-title strong, .dwa-card p { margin: 0; }
+.dwa-title p { color: #2dd4bf; font: 900 10px ui-monospace, monospace; letter-spacing: .08em; }
+.dwa-title i { display: inline-block; width: 7px; height: 7px; margin-right: 5px; border: 1px solid #2dd4bf; border-radius: 50%; background: rgba(45,212,191,.35); }
+.dwa-title strong { padding: 3px 5px; border: 1px solid rgba(45,212,191,.42); color: #5eead4; background: rgba(20,184,166,.09); font: 800 7px ui-monospace, monospace; }
+.dwa-card.waiting .dwa-title strong { border-color: rgba(251,191,36,.5); color: #fbbf24; background: rgba(251,191,36,.08); }
+.dwa-card.complete .dwa-title strong { border-color: rgba(46,212,122,.5); color: var(--green); background: rgba(46,212,122,.08); }
+.dwa-card dl { display: grid; grid-template-columns: 1fr 1fr; gap: 0 9px; margin: 6px 0 0; padding-top: 4px; border-top: 1px solid rgba(45,212,191,.16); }
+.dwa-card dl div { display: flex; justify-content: space-between; gap: 4px; padding: 2px 0; }
+.dwa-card dt { color: #8ea5a7; font: 8px ui-monospace, monospace; }
+.dwa-card dd { margin: 0; color: var(--ink); font: 800 8px ui-monospace, monospace; }
+.dwa-card > p { margin-top: 5px; color: #9eafb2; font-size: 8px; line-height: 1.35; }
+
 .point-readout { display: grid; gap: 5px; margin-top: 9px; }
 .point-readout button { display: grid; grid-template-columns: 20px 1fr auto; gap: 8px; align-items: center; padding: 8px 10px; background: rgba(255,255,255,.018); border: 1px solid transparent; color: var(--muted); text-align: left; cursor: pointer; font-size: 10px; }
 .point-readout button.selected { border-color: rgba(0,191,255,.42); background: rgba(0,191,255,.045); color: var(--ink); }
@@ -194,6 +208,7 @@ button { color: inherit; }
 .map-legend .dynamic { background: #f4f7f8; border: 1px solid #87949a; }
 .map-legend .inflated { background: rgba(239,68,68,.72); }
 .map-legend .pick-ring { background: transparent; border: 1px solid var(--cyan); }
+.map-legend .dwa { background: #14b8a6; border: 1px dashed #0f766e; }
 .map-legend .legend-note { min-width: 0; margin-left: auto; color: var(--green); overflow: hidden; text-overflow: ellipsis; }
 
 .telemetry-panel { background: #0a151a; }

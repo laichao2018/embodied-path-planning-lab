@@ -116,6 +116,11 @@
     saveStatic: document.getElementById("save-static"),
     deleteStatic: document.getElementById("delete-static"),
     closeStaticMenu: document.getElementById("close-static-menu"),
+    dwaState: document.getElementById("dwa-state"),
+    dwaSafe: document.getElementById("dwa-safe"),
+    dwaVelocity: document.getElementById("dwa-velocity"),
+    dwaYaw: document.getElementById("dwa-yaw"),
+    dwaTarget: document.getElementById("dwa-target"),
   };
 
   const state = {
@@ -134,6 +139,7 @@
     running: false,
     executing: false,
     executionCursor: 0,
+    dwa: null,
     draggingMarker: null,
     draggingStatic: null,
     staticMenu: null,
@@ -543,6 +549,91 @@
     return { x: point.x * CELL + CELL / 2, y: point.y * CELL + CELL / 2 };
   }
 
+  function nearestPathIndex(path, point, fromIndex) {
+    let nearest = Math.max(0, Math.min(path.length - 1, fromIndex));
+    let bestDistance = Number.POSITIVE_INFINITY;
+    for (let index = nearest; index < path.length; index += 1) {
+      const distance = Math.hypot(path[index].x - point.x, path[index].y - point.y);
+      if (distance < bestDistance) {
+        bestDistance = distance;
+        nearest = index;
+      }
+    }
+    return nearest;
+  }
+
+  function planDwaStep(pose, globalPath, field, fromIndex = 0) {
+    if (!globalPath.length) {
+      return { candidates: [], best: null, globalIndex: 0, target: { x: pose.x, y: pose.y }, reachedGoal: true };
+    }
+    const globalIndex = nearestPathIndex(globalPath, pose, fromIndex);
+    const goal = globalPath[globalPath.length - 1];
+    const reachedGoal = Math.hypot(goal.x - pose.x, goal.y - pose.y) < 0.9;
+    const target = globalPath[Math.min(globalPath.length - 1, globalIndex + 6)];
+    if (reachedGoal) return { candidates: [], best: null, globalIndex, target: goal, reachedGoal: true };
+
+    const controlDt = 0.16;
+    const horizonSteps = 7;
+    const minSpeed = 0.8;
+    const maxSpeed = 4.8;
+    const maxYawRate = 1.65;
+    const velocityStart = Math.max(minSpeed, pose.velocity - 1.25);
+    const velocityEnd = Math.min(maxSpeed, pose.velocity + 1.25);
+    const yawStart = Math.max(-maxYawRate, pose.yawRate - 1.35);
+    const yawEnd = Math.min(maxYawRate, pose.yawRate + 1.35);
+    const velocitySamples = Array.from({ length: 4 }, (_, index) => velocityStart + (velocityEnd - velocityStart) * index / 3);
+    const yawSamples = Array.from({ length: 5 }, (_, index) => yawStart + (yawEnd - yawStart) * index / 4);
+
+    const candidates = velocitySamples.flatMap((velocity) => yawSamples.map((yawRate) => {
+      let x = pose.x;
+      let y = pose.y;
+      let heading = pose.heading;
+      let safe = true;
+      let minCost = Number.POSITIVE_INFINITY;
+      const path = [];
+      for (let step = 0; step < horizonSteps; step += 1) {
+        heading += yawRate * controlDt;
+        x += Math.cos(heading) * velocity * controlDt;
+        y += Math.sin(heading) * velocity * controlDt;
+        const cellX = Math.round(x);
+        const cellY = Math.round(y);
+        if (cellX < 1 || cellY < 1 || cellX >= COLS - 1 || cellY >= ROWS - 1 || field.blocked.has(`${cellX},${cellY}`)) {
+          safe = false;
+          break;
+        }
+        minCost = Math.min(minCost, field.costs[cellY][cellX]);
+        path.push({ x, y });
+      }
+      const finalPoint = path[path.length - 1] || { x: pose.x, y: pose.y };
+      const targetHeading = Math.atan2(target.y - finalPoint.y, target.x - finalPoint.x);
+      const headingScore = (Math.cos(targetHeading - heading) + 1) / 2;
+      const targetDistance = Math.hypot(target.x - finalPoint.x, target.y - finalPoint.y);
+      const progressScore = Math.max(0, 1 - targetDistance / 8);
+      const clearanceScore = Number.isFinite(minCost) ? Math.min(1, 2.6 / Math.max(1, minCost)) : 0;
+      const score = safe
+        ? headingScore * 3.4 + progressScore * 3 + clearanceScore * 1.6 + velocity / maxSpeed * 0.7 - Math.abs(yawRate) * 0.08
+        : Number.NEGATIVE_INFINITY;
+      return { path, velocity, yawRate, score, minCost, safe };
+    }));
+    const best = candidates.reduce((current, candidate) => candidate.safe && (!current || candidate.score > current.score) ? candidate : current, null);
+    return { candidates, best, globalIndex, target, reachedGoal: false };
+  }
+
+  function createDwaRun(path) {
+    if (!path.length) return null;
+    const origin = path[0];
+    const next = path[1] || origin;
+    return {
+      pose: { ...origin, heading: Math.atan2(next.y - origin.y, next.x - origin.x), velocity: 2.4, yawRate: 0 },
+      trail: [origin],
+      candidates: [],
+      chosen: null,
+      globalIndex: 0,
+      target: path[Math.min(path.length - 1, 6)],
+      status: "tracking",
+    };
+  }
+
   function positionAlongPath(path, cursor) {
     if (!path.length) return null;
     const index = Math.min(Math.floor(cursor), path.length - 1);
@@ -569,6 +660,7 @@
     state.running = false;
     state.executing = false;
     state.executionCursor = 0;
+    state.dwa = null;
   }
 
   function setNotice(message) {
@@ -597,6 +689,14 @@
     elements.addDynamic.classList.toggle("active", state.placingDynamic);
     elements.addDynamic.textContent = state.placingDynamic ? "结束放置" : "添加障碍";
     elements.notice.textContent = state.notice;
+    const dwa = state.dwa;
+    const safeCandidates = dwa ? dwa.candidates.filter((candidate) => candidate.safe).length : 0;
+    elements.dwaState.textContent = !dwa ? "待命" : dwa.status === "tracking" ? "局部绕障中" : dwa.status === "waiting" ? "等待安全窗口" : "已抵达";
+    elements.dwaSafe.textContent = `${safeCandidates}/${dwa ? dwa.candidates.length : 20}`;
+    elements.dwaVelocity.textContent = dwa ? `${dwa.pose.velocity.toFixed(1)} c/s` : "—";
+    elements.dwaYaw.textContent = dwa ? `${dwa.pose.yawRate.toFixed(2)} rad/s` : "—";
+    elements.dwaTarget.textContent = dwa ? formatCell(dwa.target) : "—";
+    document.getElementById("dwa-card").className = `dwa-card ${dwa ? dwa.status : "idle"}`;
     PLANNERS.forEach((planner) => {
       document.getElementById(`enable-${planner}`).checked = state.enabled[planner];
     });
@@ -617,7 +717,7 @@
     elements.timelineValue.textContent = `${Math.round(percent)}%`;
     elements.runState.classList.toggle("is-running", state.running);
     if (state.running) elements.runState.textContent = `SEARCH ${Math.round(percent)}%`;
-    else if (state.executing) elements.runState.textContent = "ROBOT EXECUTING";
+    else if (state.executing) elements.runState.textContent = `DWA ${state.dwa && state.dwa.status === "waiting" ? "WAITING" : "TRACKING"}`;
     else if (state.placingDynamic) elements.runState.textContent = "ADD DYNAMIC OBSTACLE";
     else if (state.draggingStatic) elements.runState.textContent = "DRAG STATIC OBSTACLE";
     else if (state.draggingMarker) elements.runState.textContent = `DRAG ${state.draggingMarker.toUpperCase()}`;
@@ -694,6 +794,7 @@
     state.progress = 0;
     state.executionCursor = 0;
     state.executing = false;
+    state.dwa = null;
     state.running = true;
     setNotice("推演中：亮环表示当前扩展节点，微光点表示本步新生成节点");
     updateTelemetry();
@@ -1107,7 +1208,39 @@
     });
 
     const executionResult = state.results.astar || state.results.dijkstra || state.results.rrt || state.results.rrtstar;
-    const robot = positionAlongPath(executionResult ? executionResult.path : [state.start], state.executionCursor) || { ...state.start, heading: 0 };
+    if (state.dwa && executionResult && executionResult.path.length && state.progress >= maxSteps()) {
+      function drawLocalPolyline(points, color, width, dash = []) {
+        if (points.length < 2) return;
+        ctx.beginPath();
+        points.forEach((point, index) => {
+          const pixel = pointToCanvas(point);
+          if (index === 0) ctx.moveTo(pixel.x, pixel.y);
+          else ctx.lineTo(pixel.x, pixel.y);
+        });
+        ctx.strokeStyle = color;
+        ctx.lineWidth = width;
+        ctx.setLineDash(dash);
+        ctx.stroke();
+      }
+      ctx.save();
+      ctx.lineCap = "round";
+      ctx.lineJoin = "round";
+      state.dwa.candidates.filter((candidate) => candidate.safe).forEach((candidate) => {
+        drawLocalPolyline(candidate.path, "rgba(20, 184, 166, .2)", 1, [3, 4]);
+      });
+      if (state.dwa.chosen) drawLocalPolyline(state.dwa.chosen.path, "#14b8a6", 2.3);
+      drawLocalPolyline(state.dwa.trail, "#0f766e", 2.8);
+      const target = pointToCanvas(state.dwa.target);
+      ctx.setLineDash([2, 3]);
+      ctx.strokeStyle = "#14b8a6";
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.arc(target.x, target.y, Math.max(5, CELL * 0.72), 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.restore();
+    }
+
+    const robot = state.dwa ? state.dwa.pose : positionAlongPath(executionResult ? executionResult.path : [state.start], state.executionCursor) || { ...state.start, heading: 0 };
     const robotPixel = pointToCanvas(robot);
     ctx.save();
     ctx.translate(robotPixel.x, robotPixel.y);
@@ -1249,6 +1382,7 @@
     state.running = false;
     state.executing = false;
     state.executionCursor = 0;
+    state.dwa = null;
     state.progress = Number(event.target.value);
     const percent = Math.round(state.progress / Math.max(maxSteps(), 1) * 100);
     setNotice(`已定位到推演过程 ${percent}%`);
@@ -1266,6 +1400,49 @@
 
   let previousFrame = performance.now();
   let progressAccumulator = 0;
+  let dwaAccumulator = 0;
+
+  function advanceDwa() {
+    const executionResult = state.results.astar || state.results.dijkstra || state.results.rrt || state.results.rrtstar;
+    if (!executionResult || !executionResult.path.length) {
+      state.executing = false;
+      return;
+    }
+    const run = state.dwa || createDwaRun(executionResult.path);
+    if (!run || run.status === "complete") return;
+    const field = makeCostField(dynamicObstaclesAt(performance.now()), state.inflation);
+    const localPlan = planDwaStep(run.pose, executionResult.path, field, run.globalIndex);
+    if (localPlan.reachedGoal) {
+      state.dwa = { ...run, candidates: localPlan.candidates, chosen: null, globalIndex: localPlan.globalIndex, target: localPlan.target, status: "complete" };
+      state.executing = false;
+      setNotice("DWA 局部规划完成：机器人已安全抵达目标点");
+      updateInterface();
+      return;
+    }
+    if (!localPlan.best || !localPlan.best.path.length) {
+      state.dwa = { ...run, candidates: localPlan.candidates, chosen: null, globalIndex: localPlan.globalIndex, target: localPlan.target, status: "waiting" };
+      updateInterface();
+      return;
+    }
+    const next = localPlan.best.path[0];
+    state.dwa = {
+      pose: {
+        x: next.x,
+        y: next.y,
+        heading: Math.atan2(next.y - run.pose.y, next.x - run.pose.x),
+        velocity: localPlan.best.velocity,
+        yawRate: localPlan.best.yawRate,
+      },
+      trail: [...run.trail.slice(-480), next],
+      candidates: localPlan.candidates,
+      chosen: localPlan.best,
+      globalIndex: localPlan.globalIndex,
+      target: localPlan.target,
+      status: "tracking",
+    };
+    updateInterface();
+  }
+
   function animate(now) {
     const elapsed = Math.min(100, now - previousFrame);
     previousFrame = now;
@@ -1280,7 +1457,9 @@
           const executionResult = state.results.astar || state.results.dijkstra || state.results.rrt || state.results.rrtstar;
           if (executionResult && executionResult.path.length) {
             state.executing = true;
-            setNotice("全局路径已生成，机器人开始沿优先路径执行");
+            state.dwa = createDwaRun(executionResult.path);
+            dwaAccumulator = 0;
+            setNotice("全局路径已生成，DWA 局部规划开始跟踪并实时绕障");
           } else {
             setNotice("搜索结束：当前地图未找到可执行路径");
           }
@@ -1289,17 +1468,11 @@
       }
     }
     if (state.executing) {
-      const executionResult = state.results.astar || state.results.dijkstra || state.results.rrt || state.results.rrtstar;
-      if (!executionResult || !executionResult.path.length) {
-        state.executing = false;
-      } else {
-        const end = executionResult.path.length - 1;
-        state.executionCursor = Math.min(end, state.executionCursor + elapsed / 46 * (0.12 + state.speed * 0.018));
-        if (state.executionCursor >= end) {
-          state.executing = false;
-          setNotice("任务完成：机器人已抵达目标点");
-          updateTelemetry();
-        }
+      dwaAccumulator += elapsed;
+      const dwaInterval = Math.max(55, 155 - state.speed * 15);
+      if (dwaAccumulator >= dwaInterval) {
+        dwaAccumulator %= dwaInterval;
+        advanceDwa();
       }
     }
     draw(now);

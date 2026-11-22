@@ -13,6 +13,7 @@ import {
   defaultDynamicObstacles,
   dynamicObstaclesAt,
   makeCostField,
+  planDwaStep,
   pointToCanvas,
   runPlanner,
   type PlannerKey,
@@ -20,6 +21,8 @@ import {
   type Point,
   type DynamicMotion,
   type DynamicObstacleSeed,
+  type DwaCandidate,
+  type DwaPose,
   type StaticRect,
 } from "./planning";
 
@@ -33,6 +36,15 @@ type StaticMenu = {
   point: Point;
   width: number;
   height: number;
+};
+type DwaRunState = {
+  pose: DwaPose;
+  trail: Point[];
+  candidates: DwaCandidate[];
+  chosen: DwaCandidate | null;
+  globalIndex: number;
+  target: Point;
+  status: "tracking" | "waiting" | "complete";
 };
 const PLANNER_KEYS: PlannerKey[] = ["astar", "dijkstra", "rrt", "rrtstar"];
 
@@ -81,6 +93,26 @@ function positionAlongPath(path: Point[], cursor: number) {
   };
 }
 
+function createDwaRun(path: Point[]): DwaRunState | null {
+  if (!path.length) return null;
+  const origin = path[0];
+  const next = path[1] ?? origin;
+  return {
+    pose: {
+      ...origin,
+      heading: Math.atan2(next.y - origin.y, next.x - origin.x),
+      velocity: 2.4,
+      yawRate: 0,
+    },
+    trail: [origin],
+    candidates: [],
+    chosen: null,
+    globalIndex: 0,
+    target: path[Math.min(path.length - 1, 6)],
+    status: "tracking",
+  };
+}
+
 function formatCell(point: Point) {
   return `${Math.round(point.x).toString().padStart(2, "0")},${Math.round(point.y).toString().padStart(2, "0")}`;
 }
@@ -114,6 +146,7 @@ export default function Home() {
   const [running, setRunning] = useState(false);
   const [executing, setExecuting] = useState(false);
   const [executionCursor, setExecutionCursor] = useState(0);
+  const [dwaState, setDwaState] = useState<DwaRunState | null>(null);
   const [draggingMarker, setDraggingMarker] = useState<"start" | "goal" | null>(null);
   const [notice, setNotice] = useState("拖动地图上的起点或终点图标设置位置");
 
@@ -130,6 +163,7 @@ export default function Home() {
     setRunning(false);
     setExecuting(false);
     setExecutionCursor(0);
+    setDwaState(null);
   };
 
   const applyGridSize = () => {
@@ -163,25 +197,59 @@ export default function Home() {
     if (!running || maxSteps === 0 || progress < maxSteps) return;
     setRunning(false);
     setExecuting(true);
-    setNotice("全局路径已生成，机器人开始沿 A* 优先路径执行");
+    setNotice("全局路径已生成，DWA 局部规划开始跟踪并实时绕障");
   }, [maxSteps, progress, running]);
 
   useEffect(() => {
     if (!executing || !executionResult?.path.length) return;
-    const end = executionResult.path.length - 1;
+    setDwaState((current) => current ?? createDwaRun(executionResult.path));
+  }, [executing, executionResult]);
+
+  useEffect(() => {
+    if (!executing || !executionResult?.path.length) return;
     const timer = window.setInterval(() => {
-      setExecutionCursor((current) => {
-        const next = Math.min(end, current + 0.12 + speed * 0.018);
-        if (next >= end) {
-          window.clearInterval(timer);
-          setExecuting(false);
-          setNotice("任务完成：机器人已抵达目标点");
+      const field = makeCostField(
+        dynamicObstaclesAt(performance.now(), dynamicSeeds, dynamicMotion),
+        inflation,
+        staticObstacles,
+      );
+      setDwaState((current) => {
+        const run = current ?? createDwaRun(executionResult.path);
+        if (!run || run.status === "complete") return run;
+        const localPlan = planDwaStep(run.pose, executionResult.path, field, run.globalIndex);
+        if (localPlan.reachedGoal) {
+          return { ...run, candidates: localPlan.candidates, chosen: null, globalIndex: localPlan.globalIndex, target: localPlan.target, status: "complete" };
         }
-        return next;
+        if (!localPlan.best?.path.length) {
+          return { ...run, candidates: localPlan.candidates, chosen: null, globalIndex: localPlan.globalIndex, target: localPlan.target, status: "waiting" };
+        }
+        const next = localPlan.best.path[0];
+        const nextPose: DwaPose = {
+          x: next.x,
+          y: next.y,
+          heading: Math.atan2(next.y - run.pose.y, next.x - run.pose.x),
+          velocity: localPlan.best.velocity,
+          yawRate: localPlan.best.yawRate,
+        };
+        return {
+          pose: nextPose,
+          trail: [...run.trail.slice(-480), next],
+          candidates: localPlan.candidates,
+          chosen: localPlan.best,
+          globalIndex: localPlan.globalIndex,
+          target: localPlan.target,
+          status: "tracking",
+        };
       });
-    }, 46);
+    }, Math.max(55, 155 - speed * 15));
     return () => window.clearInterval(timer);
-  }, [executing, executionResult, speed]);
+  }, [dynamicMotion, dynamicSeeds, executing, executionResult, inflation, speed, staticObstacles]);
+
+  useEffect(() => {
+    if (!executing || dwaState?.status !== "complete") return;
+    setExecuting(false);
+    setNotice("DWA 局部规划完成：机器人已安全抵达目标点");
+  }, [dwaState?.status, executing]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -343,6 +411,36 @@ export default function Home() {
         }
       });
 
+      if (dwaState && executionResult?.path.length && progress >= maxSteps) {
+        const drawPolyline = (points: Point[], color: string, width: number, dash: number[] = []) => {
+          if (points.length < 2) return;
+          ctx.beginPath();
+          points.forEach((point, index) => {
+            const pixel = pointToCanvas(point);
+            if (index === 0) ctx.moveTo(pixel.x, pixel.y);
+            else ctx.lineTo(pixel.x, pixel.y);
+          });
+          ctx.strokeStyle = color;
+          ctx.lineWidth = width;
+          ctx.setLineDash(dash);
+          ctx.stroke();
+        };
+        ctx.save();
+        ctx.lineCap = "round";
+        ctx.lineJoin = "round";
+        dwaState.candidates.filter((candidate) => candidate.safe).forEach((candidate) => {
+          drawPolyline(candidate.path, "rgba(20, 184, 166, .2)", 1, [3, 4]);
+        });
+        if (dwaState.chosen) drawPolyline(dwaState.chosen.path, "#14b8a6", 2.3);
+        drawPolyline(dwaState.trail, "#0f766e", 2.8);
+        const target = pointToCanvas(dwaState.target);
+        ctx.setLineDash([2, 3]);
+        ctx.strokeStyle = "#14b8a6";
+        ctx.lineWidth = 1.5;
+        ctx.beginPath(); ctx.arc(target.x, target.y, Math.max(5, CELL * 0.72), 0, Math.PI * 2); ctx.stroke();
+        ctx.restore();
+      }
+
       const drawMarker = (point: Point, color: string, kind: "start" | "goal") => {
         const pixel = pointToCanvas(point);
         const active = draggingMarker === kind;
@@ -388,7 +486,7 @@ export default function Home() {
         }
         ctx.restore();
       };
-      const robot = positionAlongPath(executionResult?.path ?? [start], executionCursor) ?? { ...start, heading: 0 };
+      const robot = dwaState?.pose ?? positionAlongPath(executionResult?.path ?? [start], executionCursor) ?? { ...start, heading: 0 };
       const robotPixel = pointToCanvas(robot);
       ctx.save();
       ctx.translate(robotPixel.x, robotPixel.y);
@@ -412,7 +510,7 @@ export default function Home() {
     };
     frame = window.requestAnimationFrame(draw);
     return () => window.cancelAnimationFrame(frame);
-  }, [draggingMarker, dynamicMotion, dynamicSeeds, executionCursor, executionResult, gridSize, inflation, layer, progress, resultList, start, staticObstacles, goal]);
+  }, [draggingMarker, dynamicMotion, dynamicSeeds, dwaState, executionCursor, executionResult, gridSize, inflation, layer, maxSteps, progress, resultList, start, staticObstacles, goal]);
 
   const plan = () => {
     setPlacingDynamic(false);
@@ -644,6 +742,10 @@ export default function Home() {
 
   const visibleStep = (result: PlannerResult) => result.steps[Math.min(Math.floor(progress), result.steps.length) - 1];
   const enabledPlanners = PLANNER_KEYS.filter((key) => enabled[key]);
+  const dwaSafeCount = dwaState?.candidates.filter((candidate) => candidate.safe).length ?? 0;
+  const dwaLabel = !dwaState
+    ? "待命"
+    : dwaState.status === "tracking" ? "局部绕障中" : dwaState.status === "waiting" ? "等待安全窗口" : "已抵达";
 
   const togglePlanner = (key: PlannerKey) => {
     const next = { ...enabled, [key]: !enabled[key] };
@@ -701,6 +803,18 @@ export default function Home() {
             <button type="button" className={placingDynamic ? "active" : ""} onClick={() => { setPlacingDynamic((current) => !current); setNotice(placingDynamic ? "已结束放置动态障碍" : "请在地图空白区域点击放置动态障碍"); }}>{placingDynamic ? "结束放置" : "添加障碍"}</button>
             <button type="button" onClick={() => { clearRun(); setDynamicSeeds([]); setPlacingDynamic(false); setNotice("动态障碍已清空"); }}>清空</button>
             <button type="button" onClick={() => { clearRun(); setDynamicSeeds(defaultDynamicObstacles()); setPlacingDynamic(false); setNotice("已恢复默认动态障碍"); }}>默认</button>
+          </div>
+
+          <div className="section-label"><span>LOCAL PLANNER</span><b>全局路径完成后自动接管</b></div>
+          <div className={`dwa-card ${dwaState?.status ?? "idle"}`}>
+            <div className="dwa-title"><p><i /> DWA 局部避障</p><strong>{dwaLabel}</strong></div>
+            <dl>
+              <div><dt>安全候选</dt><dd>{dwaSafeCount}/{dwaState?.candidates.length ?? 20}</dd></div>
+              <div><dt>线速度</dt><dd>{dwaState ? `${dwaState.pose.velocity.toFixed(1)} c/s` : "—"}</dd></div>
+              <div><dt>角速度</dt><dd>{dwaState ? `${dwaState.pose.yawRate.toFixed(2)} rad/s` : "—"}</dd></div>
+              <div><dt>目标点</dt><dd>{dwaState ? formatCell(dwaState.target) : "—"}</dd></div>
+            </dl>
+            <p>评估速度窗口与预测轨迹，避开静态、动态及膨胀障碍。</p>
           </div>
 
           <div className="section-label"><span>MISSION</span><b>拖拽任务点</b></div>
@@ -767,7 +881,7 @@ export default function Home() {
         <section className="map-panel panel" ref={mapPanelRef}>
           <div className="map-toolbar">
             <div><span className="pulse" /> PLANNING WORLD <i>/</i> {layer.toUpperCase()}</div>
-            <p className={running ? "is-running" : ""}>{running ? `SEARCH ${Math.round((progress / Math.max(maxSteps, 1)) * 100)}%` : executing ? "ROBOT EXECUTING" : placingDynamic ? "ADD DYNAMIC OBSTACLE" : draggingStatic ? "DRAG STATIC OBSTACLE" : draggingMarker ? `DRAG ${draggingMarker.toUpperCase()}` : "DRAG MARKERS"}</p>
+            <p className={running ? "is-running" : ""}>{running ? `SEARCH ${Math.round((progress / Math.max(maxSteps, 1)) * 100)}%` : executing ? `DWA ${dwaState?.status === "waiting" ? "WAITING" : "TRACKING"}` : placingDynamic ? "ADD DYNAMIC OBSTACLE" : draggingStatic ? "DRAG STATIC OBSTACLE" : draggingMarker ? `DRAG ${draggingMarker.toUpperCase()}` : "DRAG MARKERS"}</p>
           </div>
           <canvas
             ref={canvasRef}
@@ -812,6 +926,7 @@ export default function Home() {
             <span><i className="dynamic" />动态障碍</span>
             <span><i className="inflated" />膨胀与代价</span>
             <span><i className="pick-ring" />当前扩展节点</span>
+            <span><i className="dwa" />DWA 候选 / 局部轨迹</span>
             <span className="legend-note">{notice}</span>
           </div>
         </section>

@@ -3,6 +3,22 @@ export type StaticRect = { x: number; y: number; w: number; h: number };
 export type PlannerKey = "astar" | "dijkstra" | "rrt" | "rrtstar";
 export type DynamicMotion = "regular" | "random";
 export type DynamicObstacleSeed = Point & { phase: number };
+export type DwaPose = Point & { heading: number; velocity: number; yawRate: number };
+export type DwaCandidate = {
+  path: Point[];
+  velocity: number;
+  yawRate: number;
+  score: number;
+  minCost: number;
+  safe: boolean;
+};
+export type DwaPlan = {
+  candidates: DwaCandidate[];
+  best: DwaCandidate | null;
+  globalIndex: number;
+  target: Point;
+  reachedGoal: boolean;
+};
 
 export type SearchStep = {
   pick: Point;
@@ -513,4 +529,94 @@ export function runPlanner(key: PlannerKey, start: Point, goal: Point, field: Co
 
 export function pointToCanvas(point: Point): Point {
   return { x: point.x * CELL + CELL / 2, y: point.y * CELL + CELL / 2 };
+}
+
+function nearestPathIndex(path: Point[], point: Point, fromIndex: number) {
+  let nearest = Math.max(0, Math.min(path.length - 1, fromIndex));
+  let bestDistance = Number.POSITIVE_INFINITY;
+  for (let index = nearest; index < path.length; index += 1) {
+    const distance = Math.hypot(path[index].x - point.x, path[index].y - point.y);
+    if (distance < bestDistance) {
+      bestDistance = distance;
+      nearest = index;
+    }
+  }
+  return nearest;
+}
+
+/**
+ * One Dynamic Window Approach control cycle. Candidate trajectories use the
+ * current inflated cost field, so both static geometry and moving obstacles
+ * influence the local avoidance decision.
+ */
+export function planDwaStep(
+  pose: DwaPose,
+  globalPath: Point[],
+  field: CostField,
+  fromIndex = 0,
+): DwaPlan {
+  if (!globalPath.length) {
+    return { candidates: [], best: null, globalIndex: 0, target: { x: pose.x, y: pose.y }, reachedGoal: true };
+  }
+
+  const globalIndex = nearestPathIndex(globalPath, pose, fromIndex);
+  const goal = globalPath.at(-1)!;
+  const reachedGoal = Math.hypot(goal.x - pose.x, goal.y - pose.y) < 0.9;
+  const target = globalPath[Math.min(globalPath.length - 1, globalIndex + 6)];
+  if (reachedGoal) return { candidates: [], best: null, globalIndex, target: goal, reachedGoal: true };
+
+  const controlDt = 0.16;
+  const horizonSteps = 7;
+  const minSpeed = 0.8;
+  const maxSpeed = 4.8;
+  const maxYawRate = 1.65;
+  const speedDelta = 1.25;
+  const yawDelta = 1.35;
+  const velocityStart = Math.max(minSpeed, pose.velocity - speedDelta);
+  const velocityEnd = Math.min(maxSpeed, pose.velocity + speedDelta);
+  const yawStart = Math.max(-maxYawRate, pose.yawRate - yawDelta);
+  const yawEnd = Math.min(maxYawRate, pose.yawRate + yawDelta);
+  const velocitySamples = Array.from({ length: 4 }, (_, index) => velocityStart + ((velocityEnd - velocityStart) * index) / 3);
+  const yawSamples = Array.from({ length: 5 }, (_, index) => yawStart + ((yawEnd - yawStart) * index) / 4);
+
+  const candidates = velocitySamples.flatMap((velocity) => yawSamples.map((yawRate) => {
+    let x = pose.x;
+    let y = pose.y;
+    let heading = pose.heading;
+    let safe = true;
+    let minCost = Number.POSITIVE_INFINITY;
+    const path: Point[] = [];
+    for (let step = 0; step < horizonSteps; step += 1) {
+      heading += yawRate * controlDt;
+      x += Math.cos(heading) * velocity * controlDt;
+      y += Math.sin(heading) * velocity * controlDt;
+      const cellX = Math.round(x);
+      const cellY = Math.round(y);
+      const key = `${cellX},${cellY}`;
+      if (
+        cellX < 1 || cellY < 1 || cellX >= COLS - 1 || cellY >= ROWS - 1 ||
+        field.blocked.has(key)
+      ) {
+        safe = false;
+        break;
+      }
+      minCost = Math.min(minCost, field.costs[cellY][cellX]);
+      path.push({ x, y });
+    }
+    const finalPoint = path.at(-1) ?? { x: pose.x, y: pose.y };
+    const targetHeading = Math.atan2(target.y - finalPoint.y, target.x - finalPoint.x);
+    const headingScore = (Math.cos(targetHeading - heading) + 1) / 2;
+    const targetDistance = Math.hypot(target.x - finalPoint.x, target.y - finalPoint.y);
+    const progressScore = Math.max(0, 1 - targetDistance / 8);
+    const clearanceScore = Number.isFinite(minCost) ? Math.min(1, 2.6 / Math.max(1, minCost)) : 0;
+    const score = safe
+      ? headingScore * 3.4 + progressScore * 3 + clearanceScore * 1.6 + (velocity / maxSpeed) * 0.7 - Math.abs(yawRate) * 0.08
+      : Number.NEGATIVE_INFINITY;
+    return { path, velocity, yawRate, score, minCost, safe };
+  }));
+
+  const best = candidates.reduce<DwaCandidate | null>((current, candidate) => (
+    candidate.safe && (!current || candidate.score > current.score) ? candidate : current
+  ), null);
+  return { candidates, best, globalIndex, target, reachedGoal: false };
 }

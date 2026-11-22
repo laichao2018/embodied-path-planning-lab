@@ -32,6 +32,18 @@ npm run dev
 npm run build
 ```
 
+自动验证代价地图和三种规划算法：
+
+```bash
+npm test
+```
+
+一次完成算法测试与生产构建：
+
+```bash
+npm run verify
+```
+
 ## 交互说明
 
 1. 选择“原始 / 膨胀 / 代价”图层观察地图预处理结果。

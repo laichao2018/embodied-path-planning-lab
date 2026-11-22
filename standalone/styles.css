@@ -8,6 +8,7 @@
   --green: #7df8cf;
   --amber: #ffb85b;
   --pink: #ff5d8e;
+  --violet: #a78bfa;
 }
 
 * { box-sizing: border-box; }
@@ -107,6 +108,7 @@ button { color: inherit; }
 .algorithm-list .astar { background: var(--cyan); }
 .algorithm-list .dijkstra { background: var(--amber); }
 .algorithm-list .rrt { background: var(--pink); }
+.algorithm-list .rrtstar { background: var(--violet); }
 .speed-control { margin-top: 16px; }
 .run-button { width: 100%; display: flex; justify-content: space-between; align-items: center; margin-top: auto; padding: 12px 13px; border: 0; background: var(--green); color: #041015; font-weight: 850; font-size: 11px; cursor: pointer; transition: 140ms ease; }
 .run-button:hover { background: #a4ffe1; }
@@ -154,6 +156,7 @@ button { color: inherit; }
 .telemetry-card.astar { --planner: var(--cyan); --planner-rgb: 67, 217, 255; }
 .telemetry-card.dijkstra { --planner: var(--amber); --planner-rgb: 255, 184, 91; }
 .telemetry-card.rrt { --planner: var(--pink); --planner-rgb: 255, 93, 142; }
+.telemetry-card.rrtstar { --planner: var(--violet); --planner-rgb: 167, 139, 250; }
 .telemetry-title { display: flex; align-items: center; justify-content: space-between; }
 .algorithm-formula { display: grid; gap: 3px; margin: 7px 0 5px; padding: 6px 8px; border-left: 2px solid var(--planner); background: rgba(var(--planner-rgb), .08); }
 .algorithm-formula span { color: #71858e; font: 800 7px ui-monospace, monospace; letter-spacing: .14em; }
@@ -190,7 +193,7 @@ button { color: inherit; }
   .map-legend > span:not(.legend-note) { display: none; }
 }
 
-@media (max-height: 700px) {
+@media (max-height: 850px) {
   .control-panel, .telemetry-panel { padding-top: 12px; padding-bottom: 12px; }
   .section-label { margin-top: 12px; }
   .range-control { margin-top: 9px; }

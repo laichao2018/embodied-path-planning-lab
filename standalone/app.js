@@ -6,7 +6,7 @@
   const CELL = 24;
   const WIDTH = COLS * CELL;
   const HEIGHT = ROWS * CELL;
-  const PLANNERS = ["astar", "dijkstra", "rrt"];
+  const PLANNERS = ["astar", "dijkstra", "rrt", "rrtstar"];
   const STATIC_RECTS = [
     { x: 6, y: 3, w: 4, h: 7 },
     { x: 15, y: 0, w: 3, h: 8 },
@@ -19,8 +19,9 @@
     astar: "#43d9ff",
     dijkstra: "#ffb85b",
     rrt: "#ff5d8e",
+    rrtstar: "#a78bfa",
   };
-  const NAMES = { astar: "A*", dijkstra: "DIJKSTRA", rrt: "RRT" };
+  const NAMES = { astar: "A*", dijkstra: "DIJKSTRA", rrt: "RRT", rrtstar: "RRT*" };
   const DEFAULT_START = { x: 3, y: 20 };
   const DEFAULT_GOAL = { x: 32, y: 3 };
 
@@ -55,7 +56,7 @@
     goal: { ...DEFAULT_GOAL },
     inflation: 1.45,
     speed: 4,
-    enabled: { astar: true, dijkstra: true, rrt: true },
+    enabled: { astar: true, dijkstra: true, rrt: true, rrtstar: true },
     results: {},
     progress: 0,
     running: false,
@@ -232,7 +233,7 @@
 
   function segmentIsFree(a, b, blocked) {
     const distance = Math.hypot(b.x - a.x, b.y - a.y);
-    const samples = Math.max(2, Math.ceil(distance / 0.18));
+    const samples = Math.max(2, Math.ceil(distance / 0.08));
     for (let i = 0; i <= samples; i += 1) {
       const t = i / samples;
       if (blocked.has(keyOf({ x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t }))) return false;
@@ -313,8 +314,134 @@
     };
   }
 
+  function rrtStarSearch(start, goal, field) {
+    const begin = performance.now();
+    const random = mulberry32(Math.round(start.x * 997 + start.y * 131 + goal.x * 67 + goal.y * 17 + 4049));
+    const nodes = [{ ...start, parent: -1, cost: 0 }];
+    const steps = [];
+    const stepSize = 1.55;
+    const neighborRadius = 3.6;
+    let bestGoalParent = -1;
+    let bestGoalCost = Number.POSITIVE_INFINITY;
+
+    function isAncestor(candidate, index) {
+      let current = index;
+      let guard = 0;
+      while (current >= 0 && guard <= nodes.length) {
+        if (current === candidate) return true;
+        current = nodes[current].parent;
+        guard += 1;
+      }
+      return false;
+    }
+
+    function refreshDescendantCosts(parentIndex) {
+      for (let index = 0; index < nodes.length; index += 1) {
+        if (nodes[index].parent !== parentIndex) continue;
+        nodes[index].cost = nodes[parentIndex].cost + Math.hypot(
+          nodes[index].x - nodes[parentIndex].x,
+          nodes[index].y - nodes[parentIndex].y,
+        );
+        refreshDescendantCosts(index);
+      }
+    }
+
+    for (let iteration = 0; iteration < 1600; iteration += 1) {
+      const sample = random() < 0.1
+        ? goal
+        : { x: 1 + random() * (COLS - 3), y: 1 + random() * (ROWS - 3) };
+      let nearestIndex = 0;
+      let nearestDistance = Number.POSITIVE_INFINITY;
+      nodes.forEach((node, index) => {
+        const distance = Math.hypot(node.x - sample.x, node.y - sample.y);
+        if (distance < nearestDistance) {
+          nearestDistance = distance;
+          nearestIndex = index;
+        }
+      });
+
+      const nearest = nodes[nearestIndex];
+      const scale = Math.min(stepSize, nearestDistance) / Math.max(nearestDistance, 0.0001);
+      const next = {
+        x: nearest.x + (sample.x - nearest.x) * scale,
+        y: nearest.y + (sample.y - nearest.y) * scale,
+      };
+      if (next.x <= 1 || next.y <= 1 || next.x >= COLS - 2 || next.y >= ROWS - 2) continue;
+      if (!segmentIsFree(nearest, next, field.blocked)) continue;
+
+      const nearIndices = nodes
+        .map((node, index) => ({
+          index,
+          distance: Math.hypot(node.x - next.x, node.y - next.y),
+        }))
+        .filter(({ distance }) => distance <= neighborRadius);
+
+      let parentIndex = nearestIndex;
+      let parentCost = nearest.cost + Math.hypot(nearest.x - next.x, nearest.y - next.y);
+      nearIndices.forEach((candidate) => {
+        const node = nodes[candidate.index];
+        const candidateCost = node.cost + candidate.distance;
+        if (candidateCost >= parentCost || !segmentIsFree(node, next, field.blocked)) return;
+        parentIndex = candidate.index;
+        parentCost = candidateCost;
+      });
+
+      nodes.push({ ...next, parent: parentIndex, cost: parentCost });
+      const nextIndex = nodes.length - 1;
+      nearIndices.forEach((candidate) => {
+        if (candidate.index === 0 || candidate.index === parentIndex) return;
+        if (isAncestor(candidate.index, nextIndex)) return;
+        const node = nodes[candidate.index];
+        const rewiredCost = parentCost + candidate.distance;
+        if (rewiredCost + 1e-6 >= node.cost || !segmentIsFree(next, node, field.blocked)) return;
+        node.parent = nextIndex;
+        node.cost = rewiredCost;
+        refreshDescendantCosts(candidate.index);
+      });
+
+      const parent = nodes[parentIndex];
+      steps.push({
+        pick: { x: parent.x, y: parent.y },
+        generated: [next],
+        open: nodes.length,
+        closed: iteration + 1,
+        edge: [{ x: parent.x, y: parent.y }, next],
+      });
+
+      const distanceToGoal = Math.hypot(next.x - goal.x, next.y - goal.y);
+      const goalCost = parentCost + distanceToGoal;
+      if (distanceToGoal < 2.5 && goalCost < bestGoalCost && segmentIsFree(next, goal, field.blocked)) {
+        bestGoalParent = nextIndex;
+        bestGoalCost = goalCost;
+      }
+    }
+
+    const path = [];
+    if (bestGoalParent >= 0) {
+      path.push(goal);
+      let index = bestGoalParent;
+      while (index >= 0) {
+        path.push({ x: nodes[index].x, y: nodes[index].y });
+        index = nodes[index].parent;
+      }
+      path.reverse();
+    }
+    return {
+      key: "rrtstar",
+      steps,
+      path,
+      expanded: steps.length,
+      generated: nodes.length,
+      pathLength: pathLength(path),
+      durationMs: performance.now() - begin,
+      found: path.length > 0,
+    };
+  }
+
   function runPlanner(planner, start, goal, field) {
-    return planner === "rrt" ? rrtSearch(start, goal, field) : gridSearch(planner, start, goal, field);
+    if (planner === "rrt") return rrtSearch(start, goal, field);
+    if (planner === "rrtstar") return rrtStarSearch(start, goal, field);
+    return gridSearch(planner, start, goal, field);
   }
 
   function pointToCanvas(point) {
@@ -659,7 +786,7 @@
       const visible = Math.min(Math.floor(state.progress), result.steps.length);
       const color = COLORS[result.key];
       const steps = result.steps.slice(0, visible);
-      if (result.key === "rrt") {
+      if (result.key === "rrt" || result.key === "rrtstar") {
         ctx.lineWidth = 1.15;
         ctx.strokeStyle = `${color}66`;
         steps.forEach((step) => {
@@ -711,7 +838,7 @@
       }
     });
 
-    const executionResult = state.results.astar || state.results.dijkstra || state.results.rrt;
+    const executionResult = state.results.astar || state.results.dijkstra || state.results.rrt || state.results.rrtstar;
     const robot = positionAlongPath(executionResult ? executionResult.path : [state.start], state.executionCursor) || { ...state.start, heading: 0 };
     const robotPixel = pointToCanvas(robot);
     ctx.save();
@@ -811,7 +938,7 @@
         state.progress = Math.min(maxSteps(), state.progress + increments * state.speed);
         if (state.progress >= maxSteps()) {
           state.running = false;
-          const executionResult = state.results.astar || state.results.dijkstra || state.results.rrt;
+          const executionResult = state.results.astar || state.results.dijkstra || state.results.rrt || state.results.rrtstar;
           if (executionResult && executionResult.path.length) {
             state.executing = true;
             setNotice("全局路径已生成，机器人开始沿优先路径执行");
@@ -823,7 +950,7 @@
       }
     }
     if (state.executing) {
-      const executionResult = state.results.astar || state.results.dijkstra || state.results.rrt;
+      const executionResult = state.results.astar || state.results.dijkstra || state.results.rrt || state.results.rrtstar;
       if (!executionResult || !executionResult.path.length) {
         state.executing = false;
       } else {

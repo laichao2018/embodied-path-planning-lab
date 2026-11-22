@@ -1,5 +1,5 @@
 export type Point = { x: number; y: number };
-export type PlannerKey = "astar" | "dijkstra" | "rrt";
+export type PlannerKey = "astar" | "dijkstra" | "rrt" | "rrtstar";
 
 export type SearchStep = {
   pick: Point;
@@ -210,7 +210,7 @@ function mulberry32(seed: number) {
 
 function segmentIsFree(a: Point, b: Point, blocked: Set<string>) {
   const distance = Math.hypot(b.x - a.x, b.y - a.y);
-  const samples = Math.max(2, Math.ceil(distance / 0.18));
+  const samples = Math.max(2, Math.ceil(distance / 0.08));
   for (let i = 0; i <= samples; i += 1) {
     const t = i / samples;
     const point = { x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t };
@@ -294,8 +294,143 @@ function rrtSearch(start: Point, goal: Point, field: CostField): PlannerResult {
   };
 }
 
+function rrtStarSearch(start: Point, goal: Point, field: CostField): PlannerResult {
+  const begin = performance.now();
+  const random = mulberry32(
+    Math.round(start.x * 997 + start.y * 131 + goal.x * 67 + goal.y * 17 + 4049),
+  );
+  const nodes: Array<Point & { parent: number; cost: number }> = [
+    { ...start, parent: -1, cost: 0 },
+  ];
+  const steps: SearchStep[] = [];
+  const stepSize = 1.55;
+  const neighborRadius = 3.6;
+  let bestGoalParent = -1;
+  let bestGoalCost = Number.POSITIVE_INFINITY;
+
+  const isAncestor = (candidate: number, index: number) => {
+    let current = index;
+    let guard = 0;
+    while (current >= 0 && guard <= nodes.length) {
+      if (current === candidate) return true;
+      current = nodes[current].parent;
+      guard += 1;
+    }
+    return false;
+  };
+
+  const refreshDescendantCosts = (parentIndex: number) => {
+    for (let index = 0; index < nodes.length; index += 1) {
+      if (nodes[index].parent !== parentIndex) continue;
+      nodes[index].cost = nodes[parentIndex].cost + Math.hypot(
+        nodes[index].x - nodes[parentIndex].x,
+        nodes[index].y - nodes[parentIndex].y,
+      );
+      refreshDescendantCosts(index);
+    }
+  };
+
+  for (let iteration = 0; iteration < 1600; iteration += 1) {
+    const sample = random() < 0.1
+      ? goal
+      : { x: 1 + random() * (COLS - 3), y: 1 + random() * (ROWS - 3) };
+    let nearestIndex = 0;
+    let nearestDistance = Number.POSITIVE_INFINITY;
+    nodes.forEach((node, index) => {
+      const distance = Math.hypot(node.x - sample.x, node.y - sample.y);
+      if (distance < nearestDistance) {
+        nearestDistance = distance;
+        nearestIndex = index;
+      }
+    });
+
+    const nearest = nodes[nearestIndex];
+    const scale = Math.min(stepSize, nearestDistance) / Math.max(nearestDistance, 0.0001);
+    const next = {
+      x: nearest.x + (sample.x - nearest.x) * scale,
+      y: nearest.y + (sample.y - nearest.y) * scale,
+    };
+    if (next.x <= 1 || next.y <= 1 || next.x >= COLS - 2 || next.y >= ROWS - 2) continue;
+    if (!segmentIsFree(nearest, next, field.blocked)) continue;
+
+    const nearIndices = nodes
+      .map((node, index) => ({
+        index,
+        distance: Math.hypot(node.x - next.x, node.y - next.y),
+      }))
+      .filter(({ distance }) => distance <= neighborRadius);
+
+    let parentIndex = nearestIndex;
+    let parentCost = nearest.cost + Math.hypot(nearest.x - next.x, nearest.y - next.y);
+    for (const candidate of nearIndices) {
+      const node = nodes[candidate.index];
+      const candidateCost = node.cost + candidate.distance;
+      if (candidateCost >= parentCost || !segmentIsFree(node, next, field.blocked)) continue;
+      parentIndex = candidate.index;
+      parentCost = candidateCost;
+    }
+
+    nodes.push({ ...next, parent: parentIndex, cost: parentCost });
+    const nextIndex = nodes.length - 1;
+
+    for (const candidate of nearIndices) {
+      if (candidate.index === 0 || candidate.index === parentIndex) continue;
+      if (isAncestor(candidate.index, nextIndex)) continue;
+      const node = nodes[candidate.index];
+      const rewiredCost = parentCost + candidate.distance;
+      if (rewiredCost + 1e-6 >= node.cost || !segmentIsFree(next, node, field.blocked)) continue;
+      node.parent = nextIndex;
+      node.cost = rewiredCost;
+      refreshDescendantCosts(candidate.index);
+    }
+
+    const parent = nodes[parentIndex];
+    steps.push({
+      pick: { x: parent.x, y: parent.y },
+      generated: [next],
+      open: nodes.length,
+      closed: iteration + 1,
+      edge: [{ x: parent.x, y: parent.y }, next],
+    });
+
+    const distanceToGoal = Math.hypot(next.x - goal.x, next.y - goal.y);
+    const goalCost = parentCost + distanceToGoal;
+    if (
+      distanceToGoal < 2.5 &&
+      goalCost < bestGoalCost &&
+      segmentIsFree(next, goal, field.blocked)
+    ) {
+      bestGoalParent = nextIndex;
+      bestGoalCost = goalCost;
+    }
+  }
+
+  const path: Point[] = [];
+  if (bestGoalParent >= 0) {
+    path.push(goal);
+    let index = bestGoalParent;
+    while (index >= 0) {
+      path.push({ x: nodes[index].x, y: nodes[index].y });
+      index = nodes[index].parent;
+    }
+    path.reverse();
+  }
+
+  return {
+    key: "rrtstar",
+    steps,
+    path,
+    expanded: steps.length,
+    generated: nodes.length,
+    pathLength: pathLength(path),
+    durationMs: performance.now() - begin,
+    found: path.length > 0,
+  };
+}
+
 export function runPlanner(key: PlannerKey, start: Point, goal: Point, field: CostField) {
   if (key === "rrt") return rrtSearch(start, goal, field);
+  if (key === "rrtstar") return rrtStarSearch(start, goal, field);
   return gridSearch(key, start, goal, field);
 }
 

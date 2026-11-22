@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="color-scheme" content="dark" />
     <title>NAV STUDIO｜离线路径规划工作台</title>
-    <meta name="description" content="无需安装依赖的 A*、Dijkstra 与 RRT 离线路径规划演示。" />
+    <meta name="description" content="无需安装依赖的 A*、Dijkstra、RRT 与 RRT* 离线路径规划演示。" />
     <link rel="stylesheet" href="./styles.css" />
   </head>
   <body>
@@ -17,7 +17,7 @@
         </div>
         <div class="workspace-stats">
           <span>GRID <b>35 × 24</b></span>
-          <span>PLANNERS <b>03</b></span>
+          <span>PLANNERS <b>04</b></span>
           <span>OBSTACLES <b>LIVE</b></span>
         </div>
         <div class="status-strip"><span class="live-dot"></span> LOCAL RUNTIME <b>OFFLINE</b></div>
@@ -51,6 +51,7 @@
             <label><input id="enable-astar" type="checkbox" checked /><i class="astar"></i>A* <small>f=g+h</small></label>
             <label><input id="enable-dijkstra" type="checkbox" checked /><i class="dijkstra"></i>Dijkstra <small>g only</small></label>
             <label><input id="enable-rrt" type="checkbox" checked /><i class="rrt"></i>RRT <small>sample</small></label>
+            <label><input id="enable-rrtstar" type="checkbox" checked /><i class="rrtstar"></i>RRT* <small>rewire</small></label>
           </div>
 
           <label class="range-control speed-control">
@@ -93,6 +94,10 @@
           </div>
           <div class="telemetry-card rrt" data-card="rrt">
             <div class="telemetry-title"><p>RRT</p><strong></strong></div><div class="algorithm-formula"><span>PARAM</span><b>qnew = STEER(qnear, qrand)</b></div><small>sample + steer / 树生长</small>
+            <dl><div><dt>PICK</dt><dd data-pick>0</dd></div><div><dt>GENERATE</dt><dd data-generated>0</dd></div><div><dt>OPEN</dt><dd data-open>0</dd></div><div><dt>CLOSED</dt><dd data-closed>0</dd></div><div><dt>TIME</dt><dd data-time>—</dd></div><div><dt>PATH</dt><dd data-path>—</dd></div></dl>
+          </div>
+          <div class="telemetry-card rrtstar" data-card="rrtstar">
+            <div class="telemetry-title"><p>RRT*</p><strong></strong></div><div class="algorithm-formula"><span>PARAM</span><b>Jnew = min(Jnear + c)</b></div><small>choose parent + rewire / 渐近优化</small>
             <dl><div><dt>PICK</dt><dd data-pick>0</dd></div><div><dt>GENERATE</dt><dd data-generated>0</dd></div><div><dt>OPEN</dt><dd data-open>0</dd></div><div><dt>CLOSED</dt><dd data-closed>0</dd></div><div><dt>TIME</dt><dd data-time>—</dd></div><div><dt>PATH</dt><dd data-path>—</dd></div></dl>
           </div>
           <div class="event-log"><p>EVENT STREAM</p><div id="events"><span><b>00</b> 等待规划任务</span><span><b>01</b> 代价地图已就绪</span><span><b>02</b> 动态感知运行中</span></div></div>

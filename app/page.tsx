@@ -19,29 +19,34 @@ import {
 
 type Layer = "raw" | "inflation" | "cost";
 type Results = Partial<Record<PlannerKey, PlannerResult>>;
+const PLANNER_KEYS: PlannerKey[] = ["astar", "dijkstra", "rrt", "rrtstar"];
 
 const COLORS: Record<PlannerKey, string> = {
   astar: "#43d9ff",
   dijkstra: "#ffb85b",
   rrt: "#ff5d8e",
+  rrtstar: "#a78bfa",
 };
 
 const NAMES: Record<PlannerKey, string> = {
   astar: "A*",
   dijkstra: "DIJKSTRA",
   rrt: "RRT",
+  rrtstar: "RRT*",
 };
 
 const DESCRIPTIONS: Record<PlannerKey, string> = {
   astar: "f = g + h / 目标导向",
   dijkstra: "priority = g / 等代价扩展",
   rrt: "sample + steer / 树生长",
+  rrtstar: "choose parent + rewire / 渐近优化",
 };
 
 const FORMULAS: Record<PlannerKey, string> = {
   astar: "f(n) = g(n) + h(n)",
   dijkstra: "priority = g(n)",
   rrt: "qnew = STEER(qnear, qrand)",
+  rrtstar: "Jnew = min(Jnear + c)",
 };
 
 const DEFAULT_START = { x: 3, y: 20 };
@@ -75,6 +80,7 @@ export default function Home() {
     astar: true,
     dijkstra: true,
     rrt: true,
+    rrtstar: true,
   });
   const [results, setResults] = useState<Results>({});
   const [progress, setProgress] = useState(0);
@@ -85,11 +91,11 @@ export default function Home() {
   const [notice, setNotice] = useState("拖动地图上的起点或终点图标设置位置");
 
   const resultList = useMemo(
-    () => (["astar", "dijkstra", "rrt"] as PlannerKey[]).map((key) => results[key]).filter(Boolean) as PlannerResult[],
+    () => PLANNER_KEYS.map((key) => results[key]).filter(Boolean) as PlannerResult[],
     [results],
   );
   const maxSteps = Math.max(0, ...resultList.map((result) => result.steps.length));
-  const executionResult = results.astar ?? results.dijkstra ?? results.rrt;
+  const executionResult = results.astar ?? results.dijkstra ?? results.rrt ?? results.rrtstar;
 
   const clearRun = () => {
     setResults({});
@@ -221,7 +227,7 @@ export default function Home() {
         const color = COLORS[result.key];
         const steps = result.steps.slice(0, visible);
 
-        if (result.key === "rrt") {
+        if (result.key === "rrt" || result.key === "rrtstar") {
           ctx.lineWidth = 1.15;
           ctx.strokeStyle = `${color}66`;
           steps.forEach((step) => {
@@ -350,7 +356,7 @@ export default function Home() {
       setNotice(running ? "推演已暂停" : "继续推演搜索过程");
       return;
     }
-    const selected = (["astar", "dijkstra", "rrt"] as PlannerKey[]).filter((key) => enabled[key]);
+    const selected = PLANNER_KEYS.filter((key) => enabled[key]);
     if (!selected.length) {
       setNotice("请至少选择一种规划算法");
       return;
@@ -459,7 +465,7 @@ export default function Home() {
         </div>
         <div className="workspace-stats">
           <span>GRID <b>35 × 24</b></span>
-          <span>PLANNERS <b>03</b></span>
+          <span>PLANNERS <b>04</b></span>
           <span>OBSTACLES <b>LIVE</b></span>
         </div>
         <div className="status-strip"><span className="live-dot" /> SIMULATION <b>20 Hz</b></div>
@@ -492,10 +498,10 @@ export default function Home() {
 
           <div className="section-label"><span>PLANNERS</span><b>算法选择</b></div>
           <div className="algorithm-list">
-            {(["astar", "dijkstra", "rrt"] as PlannerKey[]).map((key) => (
+            {PLANNER_KEYS.map((key) => (
               <label key={key}>
                 <input type="checkbox" checked={enabled[key]} onChange={() => { clearRun(); setEnabled((current) => ({ ...current, [key]: !current[key] })); }} />
-                <i className={key} />{NAMES[key]}<small>{key === "astar" ? "f=g+h" : key === "dijkstra" ? "g only" : "sample"}</small>
+                <i className={key} />{NAMES[key]}<small>{key === "astar" ? "f=g+h" : key === "dijkstra" ? "g only" : key === "rrt" ? "sample" : "rewire"}</small>
               </label>
             ))}
           </div>
@@ -554,7 +560,7 @@ export default function Home() {
 
         <aside className="telemetry-panel panel">
           <div className="panel-heading primary"><div><p>LIVE METRICS</p><h2>搜索状态</h2></div><i className="panel-signal" /></div>
-          {(["astar", "dijkstra", "rrt"] as PlannerKey[]).map((key) => {
+          {PLANNER_KEYS.map((key) => {
             const result = results[key];
             const visible = result ? Math.min(Math.floor(progress), result.steps.length) : 0;
             const done = result && visible >= result.steps.length;

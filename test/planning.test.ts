@@ -9,11 +9,25 @@ import {
   type Point,
 } from "../app/planning.ts";
 
-const algorithms: PlannerKey[] = ["astar", "dijkstra", "rrt"];
+const algorithms: PlannerKey[] = ["astar", "dijkstra", "rrt", "rrtstar"];
 const scenarios: Array<{ start: Point; goal: Point }> = [
   { start: { x: 3, y: 20 }, goal: { x: 32, y: 3 } },
   { start: { x: 2, y: 2 }, goal: { x: 31, y: 20 } },
 ];
+
+function assertPathIsCollisionFree(path: Point[], blocked: Set<string>) {
+  for (let index = 1; index < path.length; index += 1) {
+    const from = path[index - 1];
+    const to = path[index];
+    const samples = Math.max(2, Math.ceil(Math.hypot(to.x - from.x, to.y - from.y) / 0.08));
+    for (let sampleIndex = 0; sampleIndex <= samples; sampleIndex += 1) {
+      const t = sampleIndex / samples;
+      const x = Math.round(from.x + (to.x - from.x) * t);
+      const y = Math.round(from.y + (to.y - from.y) * t);
+      assert.equal(blocked.has(`${x},${y}`), false);
+    }
+  }
+}
 
 test("cost map expands obstacle cells when inflation grows", () => {
   const obstacles = dynamicObstaclesAt(1_000);
@@ -35,7 +49,16 @@ for (const [scenarioIndex, scenario] of scenarios.entries()) {
       assert.ok(result.path.length > 1);
       assert.deepEqual(result.path[0], scenario.start);
       assert.deepEqual(result.path.at(-1), scenario.goal);
-      assert.ok(result.path.every((point) => !field.blocked.has(`${Math.round(point.x)},${Math.round(point.y)}`)));
+      assertPathIsCollisionFree(result.path, field.blocked);
     });
   }
 }
+
+test("RRT* rewiring improves the deterministic RRT route", () => {
+  const field = makeCostField(dynamicObstaclesAt(1_000), 1.45);
+  const { start, goal } = scenarios[0];
+  const rrt = runPlanner("rrt", start, goal, field);
+  const rrtStar = runPlanner("rrtstar", start, goal, field);
+
+  assert.ok(rrtStar.pathLength < rrt.pathLength);
+});

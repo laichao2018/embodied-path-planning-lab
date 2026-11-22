@@ -58,7 +58,8 @@
     running: false,
     executing: false,
     executionCursor: 0,
-    notice: "单击地图依次设置起点与终点",
+    draggingMarker: null,
+    notice: "拖动地图上的起点或终点图标设置位置",
   };
 
   function keyOf(point) {
@@ -377,7 +378,8 @@
     elements.runState.classList.toggle("is-running", state.running);
     if (state.running) elements.runState.textContent = `SEARCH ${Math.round(percent)}%`;
     else if (state.executing) elements.runState.textContent = "ROBOT EXECUTING";
-    else elements.runState.textContent = state.placement === "start" ? "SET START" : "SET GOAL";
+    else if (state.draggingMarker) elements.runState.textContent = `DRAG ${state.draggingMarker.toUpperCase()}`;
+    else elements.runState.textContent = "DRAG MARKERS";
 
     const hasResults = resultList().length > 0;
     const canResume = hasResults && state.progress < stepsTotal;
@@ -455,41 +457,114 @@
     updateTelemetry();
   }
 
-  function placePoint(event) {
+  function pointerGridPosition(event, snap) {
     const rect = canvas.getBoundingClientRect();
-    const point = {
-      x: Math.max(1, Math.min(COLS - 2, Math.floor((event.clientX - rect.left) / rect.width * COLS))),
-      y: Math.max(1, Math.min(ROWS - 2, Math.floor((event.clientY - rect.top) / rect.height * ROWS))),
+    const raw = {
+      x: (event.clientX - rect.left) / rect.width * COLS - 0.5,
+      y: (event.clientY - rect.top) / rect.height * ROWS - 0.5,
     };
-    const field = makeCostField(dynamicObstaclesAt(performance.now()), state.inflation);
-    if (field.blocked.has(keyOf(point))) {
-      setNotice("该栅格属于障碍或膨胀区，请选择自由空间");
-      return;
-    }
+    if (!snap) return raw;
+    return {
+      x: Math.max(1, Math.min(COLS - 2, Math.round(raw.x))),
+      y: Math.max(1, Math.min(ROWS - 2, Math.round(raw.y))),
+    };
+  }
+
+  function beginMarkerDrag(event) {
+    const raw = pointerGridPosition(event, false);
+    const startDistance = Math.hypot(raw.x - state.start.x, raw.y - state.start.y);
+    const goalDistance = Math.hypot(raw.x - state.goal.x, raw.y - state.goal.y);
+    const marker = Math.min(startDistance, goalDistance) <= 1.15
+      ? startDistance <= goalDistance ? "start" : "goal"
+      : null;
+    if (!marker) return;
+    event.preventDefault();
+    canvas.setPointerCapture(event.pointerId);
     clearRun();
-    if (state.placement === "start") {
-      state.start = point;
-      state.placement = "goal";
-      setNotice("起点已设置，现在请选择终点");
-    } else {
-      state.goal = point;
-      state.placement = "start";
-      setNotice("终点已设置，可以启动路径规划");
-    }
+    state.draggingMarker = marker;
+    state.placement = marker;
+    canvas.classList.add("is-dragging");
+    setNotice(marker === "start" ? "正在拖动起点图标" : "正在拖动终点图标");
     updateInterface();
   }
 
-  function drawMarker(point, color, label) {
+  function moveMarker(event) {
+    if (!state.draggingMarker) return;
+    const point = pointerGridPosition(event, true);
+    const field = makeCostField(dynamicObstaclesAt(performance.now()), state.inflation);
+    if (field.blocked.has(keyOf(point))) {
+      setNotice("此处是障碍或膨胀区，图标不能放置");
+      return;
+    }
+    const other = state.draggingMarker === "start" ? state.goal : state.start;
+    if (point.x === other.x && point.y === other.y) {
+      setNotice("起点与终点不能重合");
+      return;
+    }
+    if (state.draggingMarker === "start") {
+      state.start = point;
+    } else {
+      state.goal = point;
+    }
+    setNotice(state.draggingMarker === "start" ? "松开以设置起点" : "松开以设置终点");
+    updateInterface();
+  }
+
+  function endMarkerDrag(event) {
+    if (!state.draggingMarker) return;
+    if (canvas.hasPointerCapture(event.pointerId)) canvas.releasePointerCapture(event.pointerId);
+    const label = state.draggingMarker === "start" ? "起点" : "终点";
+    state.draggingMarker = null;
+    canvas.classList.remove("is-dragging");
+    setNotice(`${label}已更新，可以启动路径规划`);
+    updateInterface();
+  }
+
+  function drawMarker(point, color, kind, now) {
     const pixel = pointToCanvas(point);
+    const active = state.draggingMarker === kind;
+    ctx.save();
+    ctx.translate(pixel.x, pixel.y);
+    if (active) {
+      ctx.beginPath();
+      ctx.strokeStyle = `${color}88`;
+      ctx.lineWidth = 2;
+      ctx.arc(0, 0, 20 + Math.sin(now / 90) * 2, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+    ctx.shadowColor = color;
+    ctx.shadowBlur = active ? 18 : 10;
     ctx.beginPath();
-    ctx.fillStyle = color;
-    ctx.arc(pixel.x, pixel.y, 13, 0, Math.PI * 2);
+    ctx.fillStyle = "#071116";
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 3;
+    ctx.arc(0, 0, 14, 0, Math.PI * 2);
     ctx.fill();
-    ctx.fillStyle = "#061015";
-    ctx.font = "800 11px ui-monospace, monospace";
-    ctx.textAlign = "center";
-    ctx.textBaseline = "middle";
-    ctx.fillText(label, pixel.x, pixel.y + 1);
+    ctx.stroke();
+    ctx.shadowBlur = 0;
+    ctx.fillStyle = color;
+    ctx.strokeStyle = color;
+    if (kind === "start") {
+      ctx.beginPath();
+      ctx.moveTo(-4, -7);
+      ctx.lineTo(8, 0);
+      ctx.lineTo(-4, 7);
+      ctx.closePath();
+      ctx.fill();
+    } else {
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(-5, 8);
+      ctx.lineTo(-5, -8);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(-4, -7);
+      ctx.lineTo(8, -4);
+      ctx.lineTo(-4, 1);
+      ctx.closePath();
+      ctx.fill();
+    }
+    ctx.restore();
   }
 
   let cachedField = makeCostField(dynamicObstaclesAt(performance.now()), state.inflation);
@@ -628,8 +703,6 @@
       }
     });
 
-    drawMarker(state.start, "#7df8cf", "S");
-    drawMarker(state.goal, "#ffb85b", "G");
     const executionResult = state.results.astar || state.results.dijkstra || state.results.rrt;
     const robot = positionAlongPath(executionResult ? executionResult.path : [state.start], state.executionCursor) || { ...state.start, heading: 0 };
     const robotPixel = pointToCanvas(robot);
@@ -654,6 +727,9 @@
     ctx.fillRect(3, -11, 5, 4);
     ctx.fillRect(3, 7, 5, 4);
     ctx.restore();
+
+    drawMarker(state.start, "#7df8cf", "start", now);
+    drawMarker(state.goal, "#ffb85b", "goal", now);
   }
 
   elements.layerControls.addEventListener("click", (event) => {
@@ -670,10 +746,12 @@
   });
   elements.selectStart.addEventListener("click", () => {
     state.placement = "start";
+    setNotice("请拖动地图上的绿色起点图标");
     updateInterface();
   });
   elements.selectGoal.addEventListener("click", () => {
     state.placement = "goal";
+    setNotice("请拖动地图上的橙色终点图标");
     updateInterface();
   });
   elements.resetPoints.addEventListener("click", () => {
@@ -681,7 +759,9 @@
     state.start = { ...DEFAULT_START };
     state.goal = { ...DEFAULT_GOAL };
     state.placement = "start";
-    setNotice("起终点已重置");
+    state.draggingMarker = null;
+    canvas.classList.remove("is-dragging");
+    setNotice("起终点已重置，可直接拖动图标调整位置");
     updateInterface();
   });
   PLANNERS.forEach((planner) => {
@@ -696,7 +776,10 @@
     updateInterface();
   });
   elements.runPlanner.addEventListener("click", startPlanning);
-  canvas.addEventListener("click", placePoint);
+  canvas.addEventListener("pointerdown", beginMarkerDrag);
+  canvas.addEventListener("pointermove", moveMarker);
+  canvas.addEventListener("pointerup", endMarkerDrag);
+  canvas.addEventListener("pointercancel", endMarkerDrag);
 
   let previousFrame = performance.now();
   let progressAccumulator = 0;

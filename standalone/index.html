@@ -38,11 +38,12 @@
             <input id="inflation" type="range" min="0.8" max="2.4" step="0.05" value="1.45" />
           </label>
 
-          <div class="section-label"><span>MISSION</span><b>起点与目标</b></div>
+          <div class="section-label"><span>MISSION</span><b>拖拽任务点</b></div>
           <div class="point-readout">
             <button id="select-start" type="button" class="selected"><i class="start-swatch"></i> 起点 <b id="start-value">03,20</b></button>
             <button id="select-goal" type="button"><i class="goal-swatch"></i> 终点 <b id="goal-value">32,03</b></button>
           </div>
+          <p class="drag-hint">按住地图中的图标并拖到自由栅格</p>
           <button class="reset-button" id="reset-points" type="button">重置起终点</button>
 
           <div class="section-label"><span>PLANNERS</span><b>算法选择</b></div>
@@ -65,14 +66,14 @@
             <div><span class="pulse"></span> PLANNING WORLD <i>/</i> <b id="layer-name">COST</b></div>
             <p id="run-state">SET START</p>
           </div>
-          <canvas id="map" width="840" height="576" aria-label="交互式路径规划地图"></canvas>
+          <canvas id="map" width="840" height="576" aria-label="交互式路径规划地图，拖动起点箭头或终点旗帜设置位置"></canvas>
           <div class="progress-rail"><span id="progress-bar"></span></div>
           <div class="map-legend">
             <span><i class="wall"></i>边界 / 静态障碍</span>
             <span><i class="dynamic"></i>动态障碍</span>
             <span><i class="inflated"></i>膨胀与代价</span>
             <span><i class="pick-ring"></i>当前 PICK</span>
-            <span class="legend-note" id="notice">单击地图依次设置起点与终点</span>
+            <span class="legend-note" id="notice">拖动地图上的起点或终点图标设置位置</span>
           </div>
         </section>
 

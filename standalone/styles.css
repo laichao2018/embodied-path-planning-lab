@@ -86,12 +86,17 @@ button { color: inherit; }
 .range-control input { width: 100%; height: 2px; accent-color: var(--cyan); cursor: pointer; }
 
 .point-readout { display: grid; gap: 5px; margin-top: 9px; }
-.point-readout button { display: grid; grid-template-columns: 8px 1fr auto; gap: 8px; align-items: center; padding: 9px 10px; background: rgba(255,255,255,.018); border: 1px solid transparent; color: var(--muted); text-align: left; cursor: pointer; font-size: 10px; }
+.point-readout button { display: grid; grid-template-columns: 20px 1fr auto; gap: 8px; align-items: center; padding: 8px 10px; background: rgba(255,255,255,.018); border: 1px solid transparent; color: var(--muted); text-align: left; cursor: pointer; font-size: 10px; }
 .point-readout button.selected { border-color: rgba(67,217,255,.42); background: rgba(67,217,255,.035); color: var(--ink); }
-.point-readout i, .algorithm-list i, .map-legend i { width: 7px; height: 7px; border-radius: 50%; display: inline-block; }
-.start-swatch { background: var(--green); box-shadow: 0 0 8px rgba(125,248,207,.35); }
-.goal-swatch { background: var(--amber); box-shadow: 0 0 8px rgba(255,184,91,.35); }
+.algorithm-list i, .map-legend i { width: 7px; height: 7px; border-radius: 50%; display: inline-block; }
+.point-readout i { position: relative; width: 18px; height: 18px; display: inline-block; border-radius: 50%; background: #071116; }
+.start-swatch { border: 2px solid var(--green); box-shadow: 0 0 8px rgba(125,248,207,.3); }
+.start-swatch::after { content: ""; position: absolute; left: 5px; top: 4px; width: 0; height: 0; border-top: 4px solid transparent; border-bottom: 4px solid transparent; border-left: 6px solid var(--green); }
+.goal-swatch { border: 2px solid var(--amber); box-shadow: 0 0 8px rgba(255,184,91,.3); }
+.goal-swatch::before { content: ""; position: absolute; left: 5px; top: 3px; width: 2px; height: 11px; background: var(--amber); }
+.goal-swatch::after { content: ""; position: absolute; left: 7px; top: 3px; width: 6px; height: 5px; background: var(--amber); clip-path: polygon(0 0, 100% 28%, 0 100%); }
 .point-readout b { color: var(--ink); font: 700 9px ui-monospace, monospace; }
+.drag-hint { margin: 6px 0 0; color: var(--muted); font-size: 8px; line-height: 1.45; }
 .reset-button { width: 100%; margin-top: 6px; padding: 7px; border: 1px solid var(--line); background: transparent; color: var(--muted); font-size: 9px; cursor: pointer; }
 .reset-button:hover { border-color: rgba(125,248,207,.5); color: var(--green); }
 
@@ -114,7 +119,8 @@ button { color: inherit; }
 .map-toolbar p { margin: 0; color: var(--green); white-space: nowrap; }
 .map-toolbar p.is-running { color: var(--cyan); animation: blink 1.1s steps(2,end) infinite; }
 .pulse { display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: var(--green); margin-right: 8px; }
-.map-panel canvas { width: 100%; height: 100%; display: block; cursor: crosshair; }
+.map-panel canvas { width: 100%; height: 100%; display: block; cursor: grab; touch-action: none; }
+.map-panel canvas.is-dragging { cursor: grabbing; }
 .progress-rail { height: 2px; background: rgba(255,255,255,.04); }
 .progress-rail span { display: block; width: 0; height: 100%; background: linear-gradient(90deg,var(--cyan),var(--green)); transition: width 80ms linear; }
 .map-legend { min-width: 0; display: flex; align-items: center; gap: 12px; padding: 0 13px; border-top: 1px solid var(--line); color: var(--muted); font-size: 8px; white-space: nowrap; overflow: hidden; }

@@ -75,7 +75,8 @@ export default function Home() {
   const [running, setRunning] = useState(false);
   const [executing, setExecuting] = useState(false);
   const [executionCursor, setExecutionCursor] = useState(0);
-  const [notice, setNotice] = useState("单击地图依次设置起点与终点");
+  const [draggingMarker, setDraggingMarker] = useState<"start" | "goal" | null>(null);
+  const [notice, setNotice] = useState("拖动地图上的起点或终点图标设置位置");
 
   const resultList = useMemo(
     () => (["astar", "dijkstra", "rrt"] as PlannerKey[]).map((key) => results[key]).filter(Boolean) as PlannerResult[],
@@ -265,21 +266,52 @@ export default function Home() {
         }
       });
 
-      const drawMarker = (point: Point, color: string, label: string) => {
+      const drawMarker = (point: Point, color: string, kind: "start" | "goal") => {
         const pixel = pointToCanvas(point);
+        const active = draggingMarker === kind;
+        ctx.save();
+        ctx.translate(pixel.x, pixel.y);
+        if (active) {
+          ctx.beginPath();
+          ctx.strokeStyle = `${color}88`;
+          ctx.lineWidth = 2;
+          ctx.arc(0, 0, 20 + Math.sin(now / 90) * 2, 0, Math.PI * 2);
+          ctx.stroke();
+        }
+        ctx.shadowColor = color;
+        ctx.shadowBlur = active ? 18 : 10;
         ctx.beginPath();
-        ctx.fillStyle = color;
-        ctx.arc(pixel.x, pixel.y, 13, 0, Math.PI * 2);
+        ctx.fillStyle = "#071116";
+        ctx.strokeStyle = color;
+        ctx.lineWidth = 3;
+        ctx.arc(0, 0, 14, 0, Math.PI * 2);
         ctx.fill();
-        ctx.fillStyle = "#061015";
-        ctx.font = "800 11px ui-monospace";
-        ctx.textAlign = "center";
-        ctx.textBaseline = "middle";
-        ctx.fillText(label, pixel.x, pixel.y + 1);
+        ctx.stroke();
+        ctx.shadowBlur = 0;
+        ctx.fillStyle = color;
+        ctx.strokeStyle = color;
+        if (kind === "start") {
+          ctx.beginPath();
+          ctx.moveTo(-4, -7);
+          ctx.lineTo(8, 0);
+          ctx.lineTo(-4, 7);
+          ctx.closePath();
+          ctx.fill();
+        } else {
+          ctx.lineWidth = 2;
+          ctx.beginPath();
+          ctx.moveTo(-5, 8);
+          ctx.lineTo(-5, -8);
+          ctx.stroke();
+          ctx.beginPath();
+          ctx.moveTo(-4, -7);
+          ctx.lineTo(8, -4);
+          ctx.lineTo(-4, 1);
+          ctx.closePath();
+          ctx.fill();
+        }
+        ctx.restore();
       };
-      drawMarker(start, "#7df8cf", "S");
-      drawMarker(goal, "#ffb85b", "G");
-
       const robot = positionAlongPath(executionResult?.path ?? [start], executionCursor) ?? { ...start, heading: 0 };
       const robotPixel = pointToCanvas(robot);
       ctx.save();
@@ -297,11 +329,14 @@ export default function Home() {
       ctx.fillRect(-7, -11, 5, 4); ctx.fillRect(-7, 7, 5, 4); ctx.fillRect(3, -11, 5, 4); ctx.fillRect(3, 7, 5, 4);
       ctx.restore();
 
+      drawMarker(start, "#7df8cf", "start");
+      drawMarker(goal, "#ffb85b", "goal");
+
       frame = window.requestAnimationFrame(draw);
     };
     frame = window.requestAnimationFrame(draw);
     return () => window.cancelAnimationFrame(frame);
-  }, [executionCursor, executionResult, inflation, layer, progress, resultList, start, goal]);
+  }, [draggingMarker, executionCursor, executionResult, inflation, layer, progress, resultList, start, goal]);
 
   const plan = () => {
     if (resultList.length && progress < maxSteps) {
@@ -330,28 +365,63 @@ export default function Home() {
     setNotice("推演中：亮环表示 PICK，微光节点表示 GENERATE");
   };
 
-  const placePoint = (event: React.MouseEvent<HTMLCanvasElement>) => {
+  const pointerGridPosition = (event: React.PointerEvent<HTMLCanvasElement>, snap: boolean) => {
     const canvas = event.currentTarget;
     const rect = canvas.getBoundingClientRect();
-    const point = {
-      x: Math.max(1, Math.min(COLS - 2, Math.floor(((event.clientX - rect.left) / rect.width) * COLS))),
-      y: Math.max(1, Math.min(ROWS - 2, Math.floor(((event.clientY - rect.top) / rect.height) * ROWS))),
+    const raw = {
+      x: ((event.clientX - rect.left) / rect.width) * COLS - 0.5,
+      y: ((event.clientY - rect.top) / rect.height) * ROWS - 0.5,
     };
+    if (!snap) return raw;
+    return {
+      x: Math.max(1, Math.min(COLS - 2, Math.round(raw.x))),
+      y: Math.max(1, Math.min(ROWS - 2, Math.round(raw.y))),
+    };
+  };
+
+  const beginMarkerDrag = (event: React.PointerEvent<HTMLCanvasElement>) => {
+    const raw = pointerGridPosition(event, false);
+    const startDistance = Math.hypot(raw.x - start.x, raw.y - start.y);
+    const goalDistance = Math.hypot(raw.x - goal.x, raw.y - goal.y);
+    const marker = Math.min(startDistance, goalDistance) <= 1.15
+      ? startDistance <= goalDistance ? "start" : "goal"
+      : null;
+    if (!marker) return;
+    event.preventDefault();
+    event.currentTarget.setPointerCapture(event.pointerId);
+    clearRun();
+    setDraggingMarker(marker);
+    setPlacement(marker);
+    setNotice(marker === "start" ? "正在拖动起点图标" : "正在拖动终点图标");
+  };
+
+  const moveMarker = (event: React.PointerEvent<HTMLCanvasElement>) => {
+    if (!draggingMarker) return;
+    const point = pointerGridPosition(event, true);
     const field = makeCostField(dynamicObstaclesAt(performance.now()), inflation);
     if (field.blocked.has(`${point.x},${point.y}`)) {
-      setNotice("该栅格属于障碍或膨胀区，请选择自由空间");
+      setNotice("此处是障碍或膨胀区，图标不能放置");
       return;
     }
-    clearRun();
-    if (placement === "start") {
+    const other = draggingMarker === "start" ? goal : start;
+    if (point.x === other.x && point.y === other.y) {
+      setNotice("起点与终点不能重合");
+      return;
+    }
+    if (draggingMarker === "start") {
       setStart(point);
-      setPlacement("goal");
-      setNotice("起点已设置，现在请选择终点");
     } else {
       setGoal(point);
-      setPlacement("start");
-      setNotice("终点已设置，可以启动路径规划");
     }
+    setNotice(draggingMarker === "start" ? "松开以设置起点" : "松开以设置终点");
+  };
+
+  const endMarkerDrag = (event: React.PointerEvent<HTMLCanvasElement>) => {
+    if (!draggingMarker) return;
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) event.currentTarget.releasePointerCapture(event.pointerId);
+    const label = draggingMarker === "start" ? "起点" : "终点";
+    setDraggingMarker(null);
+    setNotice(`${label}已更新，可以启动路径规划`);
   };
 
   const resetPoints = () => {
@@ -359,7 +429,8 @@ export default function Home() {
     setStart(DEFAULT_START);
     setGoal(DEFAULT_GOAL);
     setPlacement("start");
-    setNotice("起终点已重置");
+    setDraggingMarker(null);
+    setNotice("起终点已重置，可直接拖动图标调整位置");
   };
 
   const visibleStep = (result: PlannerResult) => result.steps[Math.min(Math.floor(progress), result.steps.length) - 1];
@@ -396,11 +467,12 @@ export default function Home() {
             <input type="range" min="0.8" max="2.4" step="0.05" value={inflation} onChange={(event) => { clearRun(); setInflation(Number(event.target.value)); }} />
           </label>
 
-          <div className="section-label"><span>MISSION</span><b>起点与目标</b></div>
+          <div className="section-label"><span>MISSION</span><b>拖拽任务点</b></div>
           <div className="point-readout">
-            <button type="button" className={placement === "start" ? "selected" : ""} onClick={() => setPlacement("start")}><i className="start-swatch" /> 起点 <b>{formatCell(start)}</b></button>
-            <button type="button" className={placement === "goal" ? "selected" : ""} onClick={() => setPlacement("goal")}><i className="goal-swatch" /> 终点 <b>{formatCell(goal)}</b></button>
+            <button type="button" className={placement === "start" ? "selected" : ""} onClick={() => { setPlacement("start"); setNotice("请拖动地图上的绿色起点图标"); }}><i className="start-swatch" /> 起点 <b>{formatCell(start)}</b></button>
+            <button type="button" className={placement === "goal" ? "selected" : ""} onClick={() => { setPlacement("goal"); setNotice("请拖动地图上的橙色终点图标"); }}><i className="goal-swatch" /> 终点 <b>{formatCell(goal)}</b></button>
           </div>
+          <p className="drag-hint">按住地图中的图标并拖到自由栅格</p>
           <button className="reset-button" type="button" onClick={resetPoints}>重置起终点</button>
 
           <div className="section-label"><span>PLANNERS</span><b>算法选择</b></div>
@@ -426,9 +498,19 @@ export default function Home() {
         <section className="map-panel panel">
           <div className="map-toolbar">
             <div><span className="pulse" /> PLANNING WORLD <i>/</i> {layer.toUpperCase()}</div>
-            <p className={running ? "is-running" : ""}>{running ? `SEARCH ${Math.round((progress / Math.max(maxSteps, 1)) * 100)}%` : executing ? "ROBOT EXECUTING" : placement === "start" ? "SET START" : "SET GOAL"}</p>
+            <p className={running ? "is-running" : ""}>{running ? `SEARCH ${Math.round((progress / Math.max(maxSteps, 1)) * 100)}%` : executing ? "ROBOT EXECUTING" : draggingMarker ? `DRAG ${draggingMarker.toUpperCase()}` : "DRAG MARKERS"}</p>
           </div>
-          <canvas ref={canvasRef} width={CANVAS_WIDTH} height={CANVAS_HEIGHT} onClick={placePoint} aria-label="交互式路径规划地图，单击放置起点和终点" />
+          <canvas
+            ref={canvasRef}
+            className={draggingMarker ? "is-dragging" : ""}
+            width={CANVAS_WIDTH}
+            height={CANVAS_HEIGHT}
+            onPointerDown={beginMarkerDrag}
+            onPointerMove={moveMarker}
+            onPointerUp={endMarkerDrag}
+            onPointerCancel={endMarkerDrag}
+            aria-label="交互式路径规划地图，拖动起点箭头或终点旗帜设置位置"
+          />
           <div className="progress-rail"><span style={{ width: `${Math.min(100, (progress / Math.max(maxSteps, 1)) * 100)}%` }} /></div>
           <div className="map-legend">
             <span><i className="wall" />边界 / 静态障碍</span>
